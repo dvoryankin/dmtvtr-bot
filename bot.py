@@ -672,6 +672,75 @@ async def cmd_help(message: Message):
 #                 except:
 #                     pass
                     
+@dp.message(F.photo | F.document)
+async def handle_media_with_caption(message: Message):
+    """Обработка картинок/документов с командой в подписи"""
+    caption = message.caption or ""
+    
+    # Проверяем есть ли команда в начале подписи
+    cmd_prefixes = ("/d ", "/dd ", "/д ", "/дд ", "/inv ", "/vin ")
+    cmd_list = ["/d", "/dd", "/д", "/дд", "/inv", "/vin"]
+    
+    is_cmd = caption.lower().startswith(tuple(cmd_prefixes)) or caption.lower() in cmd_list
+    
+    if not is_cmd:
+        return  # Игнорируем если нет команды
+    
+    logging.info(f"Media with command caption: {caption[:50]}")
+    
+    # Определяем эффект
+    effect = None
+    if caption.lower().startswith("/inv"):
+        effect = "invert"
+    elif caption.lower().startswith("/vin"):
+        effect = "vintage"
+    
+    # Извлекаем текст для демотиватора
+    parts = caption.split(maxsplit=1)
+    final_caption = parts[1] if len(parts) > 1 else "..."
+    
+    status_msg = await message.reply("⏳ Делаем демотиватор...")
+    
+    input_file = f"temp_in_{message.message_id}.jpg"
+    output_file = f"temp_out_{message.message_id}.jpg"
+    
+    try:
+        # Скачиваем фото или документ
+        if message.photo:
+            await bot.download(message.photo[-1], destination=input_file)
+        else:
+            await bot.download(message.document, destination=input_file)
+        
+        logging.info(f"Processing media with caption: '{final_caption}'")
+        
+        # Создаём демотиватор
+        success = await run_in_thread(lambda: create_demotivator_image(
+            input_file, final_caption, output_file, effect=effect
+        ))
+        
+        if success:
+            await message.answer_photo(FSInputFile(output_file))
+        else:
+            await message.answer("Ошибка обработки")
+    
+    except Exception as e:
+        logging.error(f"Media caption handler error: {e}", exc_info=True)
+        await message.answer("Произошла ошибка")
+    
+    finally:
+        try:
+            await status_msg.delete()
+        except:
+            pass
+        
+        # Cleanup
+        for f in [input_file, output_file]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except:
+                    pass
+
 
 @dp.message(F.text)
 async def handle_command(message: Message):
