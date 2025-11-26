@@ -595,6 +595,71 @@ async def cmd_help(message: Message):
 """
     await message.answer(help_text)
 
+async def get_random_fallback_image(message_id: int) -> str:
+    """Возвращает путь к рандомной заглушке: 123.png или стикер из пака"""
+    try:
+        # Список стикерпаков
+        sticker_packs = [
+            "sp031fedcbc4e438a8984a76e28c81713d_by_stckrRobot",
+            "sp70cc950ed11089c18703860f5419aa27_by_stckrRobot",
+            "sp5e6aec1cfbfc458c3166a9bbb80e4bf2_by_stckrRobot",
+            "sp40ba02f59a1bd3f647b89178bf001829_by_stckrRobot",
+            # Добавь ещё паки если нужно
+        ]
+        
+        # С вероятностью 30% берём 123.png, иначе стикер
+        if random.random() < 0.3 and os.path.exists(FALLBACK_AVATAR):
+            output_file = f"temp_fallback_{message_id}.png"
+            copy2(FALLBACK_AVATAR, output_file)
+            logging.info("Using 123.png as fallback")
+            return output_file
+        
+        # Выбираем случайный пак
+        pack_name = random.choice(sticker_packs)
+        logging.info(f"Getting random sticker from pack: {pack_name}")
+        
+        # Получаем стикерпак
+        sticker_set = await bot.get_sticker_set(pack_name)
+        
+        if not sticker_set.stickers:
+            logging.warning("Sticker pack is empty, using 123.png")
+            if os.path.exists(FALLBACK_AVATAR):
+                output_file = f"temp_fallback_{message_id}.png"
+                copy2(FALLBACK_AVATAR, output_file)
+                return output_file
+            return None
+        
+        # Выбираем случайный стикер (только статичные, не видео)
+        static_stickers = [s for s in sticker_set.stickers if not s.is_video and not s.is_animated]
+        
+        if not static_stickers:
+            logging.warning("No static stickers in pack, using 123.png")
+            if os.path.exists(FALLBACK_AVATAR):
+                output_file = f"temp_fallback_{message_id}.png"
+                copy2(FALLBACK_AVATAR, output_file)
+                return output_file
+            return None
+        
+        sticker = random.choice(static_stickers)
+        
+        # Скачиваем стикер
+        output_file = f"temp_fallback_{message_id}.webp"
+        await bot.download(sticker, destination=output_file)
+        
+        logging.info(f"Downloaded random sticker: {sticker.file_id[:20]}...")
+        return output_file
+        
+    except Exception as e:
+        logging.error(f"Failed to get random fallback: {e}", exc_info=True)
+        
+        # Fallback на 123.png
+        if os.path.exists(FALLBACK_AVATAR):
+            output_file = f"temp_fallback_{message_id}.png"
+            copy2(FALLBACK_AVATAR, output_file)
+            return output_file
+        
+        return None
+
 # @dp.message(F.sticker)
 # async def handle_sticker_direct(message: Message):
 #     """Прямая обработка стикеров без команды"""
@@ -751,10 +816,82 @@ async def handle_command(message: Message):
     is_cmd = txt.lower() in cmd_list or any(txt.lower().startswith(p) for p in cmd_prefixes)
     if not is_cmd:
         return
-    if not message.reply_to_message:
-        await message.reply("Ответь этой командой на любое сообщение")
-        return
     
+    # === ЗАМЕНИ ЭТУ ПРОВЕРКУ ===
+    if not message.reply_to_message:
+        # Команда без реплая - делаем демотиватор из рандомного стикера
+        logging.info("Command without reply - using random sticker")
+        
+        # Извлекаем текст если есть
+        parts = txt.split(maxsplit=1)
+        caption = parts[1] if len(parts) > 1 else "..."
+        
+        # Определяем эффект
+        effect = None
+        if txt.lower().startswith("/inv"):
+            effect = "invert"
+        elif txt.lower().startswith("/vin"):
+            effect = "vintage"
+        
+        status_msg = await message.reply("⏳ Выбираю стикер...")
+        
+        input_file = f"temp_in_{message.message_id}"
+        output_file = f"temp_out_{message.message_id}.jpg"
+        
+        try:
+            # Получаем рандомный стикер (гарантированно стикер, не 123.png)
+            sticker_packs = [
+                "sp031fedcbc4e438a8984a76e28c81713d_by_stckrRobot",
+                # Добавь ещё паки
+            ]
+            
+            pack_name = random.choice(sticker_packs)
+            sticker_set = await bot.get_sticker_set(pack_name)
+            
+            # Только статичные стикеры
+            static_stickers = [s for s in sticker_set.stickers if not s.is_video and not s.is_animated]
+            
+            if not static_stickers:
+                await message.answer("Не удалось найти стикеры")
+                await status_msg.delete()
+                return
+            
+            sticker = random.choice(static_stickers)
+            input_file += ".webp"
+            await bot.download(sticker, destination=input_file)
+            
+            logging.info(f"Using random sticker for solo command")
+            
+            # Создаём демотиватор
+            success = await run_in_thread(lambda: create_demotivator_image(
+                input_file, caption, output_file, is_avatar=True, effect=effect
+            ))
+            
+            if success:
+                await message.answer_photo(FSInputFile(output_file))
+            else:
+                await message.answer("Ошибка обработки")
+        
+        except Exception as e:
+            logging.error(f"Solo command error: {e}", exc_info=True)
+            await message.answer("Ошибка при получении стикера")
+        
+        finally:
+            try:
+                await status_msg.delete()
+            except:
+                pass
+            
+            for f in [input_file, output_file]:
+                if os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except:
+                        pass
+        
+        return  # Выходим из функции
+    
+    # Дальше идёт обычная логика с reply_to_message
     effect = None
     if txt.lower().startswith("/inv"):
         effect = "invert"
@@ -935,14 +1072,17 @@ async def handle_command(message: Message):
                     input_file += ".jpg"
                     await bot.download(photos.photos[0][-1], destination=input_file)
                     avatar_available = True
-                elif os.path.exists(FALLBACK_AVATAR):
-                    input_file += ".jpg"
-                    copy2(FALLBACK_AVATAR, input_file)
-                    avatar_available = True
+                else:
+                    # Используем рандомную заглушку вместо 123.png
+                    fallback_file = await get_random_fallback_image(message.message_id)
+                    if fallback_file:
+                        input_file = fallback_file
+                        avatar_available = True
             except:
-                if os.path.exists(FALLBACK_AVATAR):
-                    input_file += ".jpg"
-                    copy2(FALLBACK_AVATAR, input_file)
+                # Используем рандомную заглушку
+                fallback_file = await get_random_fallback_image(message.message_id)
+                if fallback_file:
+                    input_file = fallback_file
                     avatar_available = True
             
             if avatar_available:
@@ -951,6 +1091,7 @@ async def handle_command(message: Message):
                 if success:
                     await message.answer_photo(FSInputFile(output_file))
             else:
+                # Генерируем из текста
                 text_for_caption = caption if caption else "..."
                 if await run_in_thread(lambda: generate_text_image(text_content, text_img_file)):
                     if await run_in_thread(lambda: create_demotivator_image(text_img_file, text_for_caption, output_file, effect=effect)):
@@ -972,10 +1113,12 @@ async def handle_command(message: Message):
         except:
             pass
         
+        # Cleanup
         for f in os.listdir("."):
             if f.startswith(f"temp_in_{message.message_id}") or \
                f.startswith(f"temp_out_{message.message_id}") or \
-               f.startswith(f"temp_text_{message.message_id}"):
+               f.startswith(f"temp_text_{message.message_id}") or \
+               f.startswith(f"temp_fallback_{message.message_id}"):
                 try:
                     os.remove(f)
                 except:
