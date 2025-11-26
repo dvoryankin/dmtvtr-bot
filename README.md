@@ -311,6 +311,83 @@ prompts = [
 temperature=1.2,  # Чем выше (до 2.0) - тем креативнее
 ```
 
+## Обслуживание
+
+### Очистка временных файлов
+
+Бот создаёт временные файлы `temp_*` которые должны автоматически удаляться. Если накапливаются:
+
+```bash
+# Ручная очистка
+cd /root/bots
+rm -f temp_fallback_*
+rm -f temp_in_*
+rm -f temp_out_*
+rm -f temp_text_*
+
+# Проверь место
+du -sh /root/bots
+```
+
+**Автоочистка через cron (рекомендуется):**
+
+```bash
+# Создай скрипт
+cat > /root/bots/cleanup.sh << 'EOF'
+#!/bin/bash
+cd /root/bots
+find . -name "temp_*" -type f -mmin +60 -delete
+EOF
+
+chmod +x /root/bots/cleanup.sh
+
+# Добавь в cron (каждый час)
+(crontab -l 2>/dev/null; echo "0 * * * * /root/bots/cleanup.sh") | crontab -
+
+# Проверь что добавилось
+crontab -l
+```
+
+### Ротация логов
+
+Лог `/root/bots/bot.log` может разрастись:
+
+```bash
+# Проверь размер
+ls -lh /root/bots/bot.log
+
+# Очисти если большой
+> /root/bots/bot.log
+
+# Или настрой logrotate
+cat > /etc/logrotate.d/dmtvtr-bot << 'EOF'
+/root/bots/bot.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 0644 root root
+}
+EOF
+```
+
+### Мониторинг места на диске
+
+```bash
+# Проверь место
+df -h /
+
+# Посмотри что занимает место
+du -sh /root/bots/*
+
+# Журналы systemd
+journalctl --disk-usage
+
+# Очисти старые журналы
+journalctl --vacuum-time=7d
+```
+
 ## Troubleshooting
 
 ### Бот не запускается
@@ -377,6 +454,28 @@ journalctl --vacuum-size=100M
 # Удали старые бэкапы
 cd /root/bots
 rm bot_backup_*.py
+```
+
+### Накапливаются temp_* файлы
+
+**Причина:** cleanup не работает в блоке finally
+
+**Решение:**
+```bash
+cd /root/bots
+
+# Добавь import glob в начало bot.py
+# В блоке finally используй glob для удаления
+
+# Настрой автоочистку
+cat > cleanup.sh << 'EOF'
+#!/bin/bash
+cd /root/bots
+find . -name "temp_*" -type f -mmin +60 -delete
+EOF
+
+chmod +x cleanup.sh
+(crontab -l 2>/dev/null; echo "0 * * * * /root/bots/cleanup.sh") | crontab -
 ```
 
 ### AI не генерирует текст
