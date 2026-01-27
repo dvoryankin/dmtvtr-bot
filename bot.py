@@ -907,6 +907,261 @@ def create_demotivator_video(vid_path, text, output_path):
                     pass
 
 
+# ---------------- ФУНКЦИИ: ЭМОДЗИ-ПАКИ ----------------
+
+def calculate_grid_size(width: int, height: int, user_grid: str = None) -> tuple:
+    """
+    Определяет оптимальный размер сетки на основе соотношения сторон
+    и предпочтений пользователя.
+
+    Args:
+        width: ширина изображения
+        height: высота изображения
+        user_grid: опциональный размер из команды ("4x4", "5x5")
+
+    Returns:
+        tuple (cols, rows) - количество колонок и строк
+    """
+    # Если пользователь указал размер, используем его
+    if user_grid and 'x' in user_grid.lower():
+        try:
+            parts = user_grid.lower().replace(' ', '').split('x')
+            cols, rows = int(parts[0]), int(parts[1])
+            if 2 <= cols <= 10 and 2 <= rows <= 10 and cols * rows <= 50:
+                logging.info(f"Using user-specified grid: {cols}x{rows}")
+                return (cols, rows)
+        except Exception as e:
+            logging.warning(f"Failed to parse user grid '{user_grid}': {e}")
+
+    # Автоматический выбор на основе соотношения сторон
+    aspect_ratio = width / height
+
+    if 0.9 <= aspect_ratio <= 1.1:  # Почти квадратное
+        grid = (5, 5) if width >= 500 else (4, 4)
+    elif aspect_ratio > 1.5:  # Широкое
+        grid = (6, 4) if width >= 600 else (5, 3)
+    elif aspect_ratio < 0.67:  # Высокое
+        grid = (4, 6) if height >= 600 else (3, 5)
+    else:  # Промежуточное
+        grid = (4, 4)
+
+    logging.info(f"Auto-selected grid {grid[0]}x{grid[1]} for {width}x{height} (aspect {aspect_ratio:.2f})")
+    return grid
+
+
+async def split_image_to_grid(image_path: str, cols: int, rows: int, output_dir: str) -> list:
+    """
+    Нарезает изображение на сетку и возвращает пути к частям.
+
+    Args:
+        image_path: путь к исходному изображению
+        cols: количество колонок
+        rows: количество строк
+        output_dir: директория для сохранения частей
+
+    Returns:
+        list путей к частям (в порядке слева-направо, сверху-вниз)
+    """
+    try:
+        img = Image.open(image_path).convert("RGBA")
+        width, height = img.size
+
+        cell_width = width // cols
+        cell_height = height // rows
+
+        parts = []
+        for row in range(rows):
+            for col in range(cols):
+                left = col * cell_width
+                top = row * cell_height
+                right = left + cell_width
+                bottom = top + cell_height
+
+                # Обрезаем часть
+                cell = img.crop((left, top, right, bottom))
+
+                # Масштабируем до 100x100
+                cell = cell.resize((100, 100), Image.Resampling.LANCZOS)
+
+                # Сохраняем как WEBP
+                part_path = f"{output_dir}/part_{row}_{col}.webp"
+                cell.save(part_path, "WEBP", quality=95)
+                parts.append(part_path)
+
+                logging.debug(f"Created image part {row},{col}: {part_path}")
+
+        logging.info(f"Split image into {len(parts)} parts ({cols}x{rows})")
+        return parts
+
+    except Exception as e:
+        logging.error(f"Error splitting image: {e}", exc_info=True)
+        return []
+
+
+async def split_video_to_grid(video_path: str, cols: int, rows: int, output_dir: str) -> list:
+    """
+    Нарезает видео на сетку и возвращает пути к WEBM частям.
+
+    1. Получаем размеры видео через ffprobe
+    2. Для каждой ячейки сетки:
+       - Вырезаем область через crop filter
+       - Масштабируем до 100x100
+       - Конвертируем в WEBM (VP9, без аудио, до 3 сек)
+
+    Returns:
+        list путей к WEBM частям
+    """
+    try:
+        # Получаем размеры видео
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            logging.error(f"ffprobe failed: {result.stderr}")
+            return []
+
+        try:
+            width, height = map(int, result.stdout.strip().split(','))
+        except:
+            logging.error(f"Failed to parse video dimensions: {result.stdout}")
+            return []
+
+        logging.info(f"Video dimensions: {width}x{height}")
+
+        cell_width = width // cols
+        cell_height = height // rows
+
+        parts = []
+        for row in range(rows):
+            for col in range(cols):
+                x = col * cell_width
+                y = row * cell_height
+
+                output_path = f"{output_dir}/part_{row}_{col}.webm"
+
+                # ffmpeg команда для вырезки и конвертации
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", video_path,
+                    "-t", "3",  # Обрезаем до 3 секунд
+                    "-vf", f"crop={cell_width}:{cell_height}:{x}:{y},scale=100:100",
+                    "-c:v", "libvpx-vp9",
+                    "-b:v", "150k",
+                    "-an",  # Без аудио
+                    "-pix_fmt", "yuva420p",
+                    "-auto-alt-ref", "0",  # Важно для custom emoji
+                    output_path
+                ]
+
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+                if result.returncode == 0 and os.path.exists(output_path):
+                    file_size = os.path.getsize(output_path)
+                    if file_size > 256 * 1024:  # Больше 256 KB
+                        logging.warning(f"Part {row},{col} is too large: {file_size} bytes")
+                    parts.append(output_path)
+                    logging.debug(f"Created video part {row},{col}: {output_path} ({file_size} bytes)")
+                else:
+                    logging.error(f"Failed to create video part {row},{col}: {result.stderr}")
+
+        logging.info(f"Split video into {len(parts)} parts ({cols}x{rows})")
+        return parts
+
+    except subprocess.TimeoutExpired:
+        logging.error("Video splitting timeout")
+        return []
+    except Exception as e:
+        logging.error(f"Error splitting video: {e}", exc_info=True)
+        return []
+
+
+async def create_custom_emoji_pack(bot_instance, user_id: int, parts: list, is_video: bool = False) -> str:
+    """
+    Создает custom emoji sticker set из частей.
+
+    Args:
+        bot_instance: экземпляр бота
+        user_id: ID пользователя
+        parts: список путей к файлам (WEBP или WEBM)
+        is_video: True если видео, False если статичные
+
+    Returns:
+        короткое имя пака для ссылки t.me/addemoji/<name>
+    """
+    from aiogram.types import BufferedInputFile, InputSticker
+    import time
+
+    try:
+        # Генерируем уникальное имя пака
+        timestamp = int(time.time())
+        bot_info = await bot_instance.me()
+        bot_username = bot_info.username
+
+        pack_name = f"emoji_{user_id}_{timestamp}_by_{bot_username}"
+        pack_title = f"Emoji Pack {timestamp}"
+
+        logging.info(f"Creating custom emoji pack: {pack_name}")
+
+        # Создаем InputSticker объекты
+        stickers = []
+        emoji_map = ["🟦", "🟩", "🟥", "🟧", "🟨", "🟪", "⬜", "⬛", "🔵", "🟫",
+                     "🔴", "🟢", "🟡", "🟣", "🟤", "⚫", "⚪", "🔶", "🔷", "🔸"]
+
+        for i, part_path in enumerate(parts):
+            try:
+                with open(part_path, "rb") as f:
+                    file_data = f.read()
+
+                file_size = len(file_data)
+                logging.debug(f"Loading part {i}: {file_size} bytes")
+
+                # Проверка размера
+                if is_video and file_size > 256 * 1024:
+                    logging.warning(f"Part {i} exceeds 256KB limit: {file_size} bytes")
+
+                filename = f"part_{i}.webm" if is_video else f"part_{i}.webp"
+
+                sticker = InputSticker(
+                    sticker=BufferedInputFile(file_data, filename=filename),
+                    emoji_list=[emoji_map[i % len(emoji_map)]],
+                    format="video" if is_video else "static"
+                )
+                stickers.append(sticker)
+
+            except Exception as e:
+                logging.error(f"Failed to prepare sticker {i}: {e}")
+
+        if not stickers:
+            raise Exception("No stickers prepared")
+
+        logging.info(f"Prepared {len(stickers)} stickers, creating pack...")
+
+        # Создаем стикер-пак
+        result = await bot_instance.create_new_sticker_set(
+            user_id=user_id,
+            name=pack_name,
+            title=pack_title,
+            stickers=stickers,
+            sticker_type="custom_emoji",
+        )
+
+        if result:
+            logging.info(f"Custom emoji pack created successfully: {pack_name}")
+            return pack_name
+        else:
+            raise Exception("create_new_sticker_set returned False")
+
+    except Exception as e:
+        logging.error(f"Error creating custom emoji pack: {e}", exc_info=True)
+        raise
+
+
 # ---------------- ХЕНДЛЕРЫ ----------------
 
 # === TENET FUNCTIONS ===
@@ -1277,6 +1532,212 @@ async def cmd_tenet(message: Message):
                     pass
 
 # === END TENET ===
+
+@dp.message(Command("emoji"))
+async def cmd_emoji(message: Message):
+    """Обработчик команды /emoji - создание custom emoji sticker packs"""
+    import tempfile
+    import shutil
+
+    # Парсим команду для извлечения размера сетки
+    parts = message.text.split()
+    user_grid = parts[1] if len(parts) > 1 else None
+
+    # Проверяем reply
+    if not message.reply_to_message:
+        await message.reply(
+            "🎨 **Команда /emoji** — создать эмодзи-пак из картинки/видео\n\n"
+            "**Использование:**\n"
+            "1️⃣ Ответь на фото/видео/GIF командой /emoji\n"
+            "2️⃣ Или отправь медиа с подписью /emoji\n\n"
+            "**Опции:**\n"
+            "• /emoji — автоматический выбор сетки\n"
+            "• /emoji 4x4 — сетка 4x4 (16 эмодзи)\n"
+            "• /emoji 5x5 — сетка 5x5 (25 эмодзи)\n\n"
+            "**Лимиты:**\n"
+            "• Видео/GIF: до 3 секунд, до 10 МБ\n"
+            "• Максимум 50 эмодзи в паке",
+            parse_mode="Markdown"
+        )
+        return
+
+    replied = message.reply_to_message
+    status_msg = await message.reply("⏳ Создаю эмодзи-пак...")
+
+    # Создаём временную директорию
+    temp_dir = tempfile.mkdtemp(prefix="emoji_pack_")
+    input_file = None
+    output_parts = []
+
+    try:
+        # === ПРОВЕРКА ТИПА МЕДИА ===
+        is_video = False
+        is_image = False
+
+        if replied.photo:
+            is_image = True
+            input_file = f"{temp_dir}/input.jpg"
+            await bot.download(replied.photo[-1], destination=input_file)
+            logging.info("Processing photo for emoji pack")
+
+        elif replied.document:
+            mime = replied.document.mime_type or ""
+            if "image" in mime:
+                is_image = True
+                ext = ".jpg"
+                if "png" in mime:
+                    ext = ".png"
+                elif "webp" in mime:
+                    ext = ".webp"
+                input_file = f"{temp_dir}/input{ext}"
+                await bot.download(replied.document, destination=input_file)
+                logging.info(f"Processing image document for emoji pack: {mime}")
+            elif "video" in mime or "gif" in mime:
+                is_video = True
+                input_file = f"{temp_dir}/input.mp4"
+                await bot.download(replied.document, destination=input_file)
+                logging.info(f"Processing video document for emoji pack: {mime}")
+            else:
+                await status_msg.edit_text("❌ Неподдерживаемый тип файла")
+                return
+
+        elif replied.video or replied.animation:
+            is_video = True
+            input_file = f"{temp_dir}/input.mp4"
+            obj = replied.video if replied.video else replied.animation
+            await bot.download(obj, destination=input_file)
+            logging.info("Processing video/animation for emoji pack")
+
+        elif replied.sticker:
+            # Проверяем тип стикера
+            file_info = await bot.get_file(replied.sticker.file_id)
+            file_path = file_info.file_path
+
+            if file_path and file_path.endswith('.webm'):
+                is_video = True
+                input_file = f"{temp_dir}/input.webm"
+                await bot.download(replied.sticker, destination=input_file)
+                logging.info("Processing video sticker for emoji pack")
+            elif file_path and (file_path.endswith('.webp') or file_path.endswith('.png')):
+                is_image = True
+                input_file = f"{temp_dir}/input.webp"
+                await bot.download(replied.sticker, destination=input_file)
+                logging.info("Processing static sticker for emoji pack")
+            elif file_path and file_path.endswith('.tgs'):
+                await status_msg.edit_text("❌ TGS стикеры пока не поддерживаются.\nИспользуйте статичные стикеры или видео.")
+                return
+            else:
+                await status_msg.edit_text("❌ Неизвестный тип стикера")
+                return
+
+        else:
+            await status_msg.edit_text("❌ Отправь фото, видео, GIF или стикер")
+            return
+
+        # === ОПРЕДЕЛЯЕМ РАЗМЕР СЕТКИ ===
+        if is_image:
+            img = Image.open(input_file)
+            width, height = img.size
+            cols, rows = calculate_grid_size(width, height, user_grid)
+        elif is_video:
+            # Получаем размеры видео
+            cmd = [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "csv=p=0",
+                input_file
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                await status_msg.edit_text("❌ Ошибка обработки видео")
+                return
+
+            try:
+                width, height = map(int, result.stdout.strip().split(','))
+                cols, rows = calculate_grid_size(width, height, user_grid)
+            except:
+                await status_msg.edit_text("❌ Не удалось определить размеры видео")
+                return
+
+        total_emojis = cols * rows
+        if total_emojis > 50:
+            await status_msg.edit_text(f"❌ Слишком большая сетка: {cols}x{rows} = {total_emojis} эмодзи\nМаксимум 50 эмодзи в паке")
+            return
+
+        await status_msg.edit_text(f"⏳ Нарезаю на сетку {cols}x{rows} ({total_emojis} эмодзи)...")
+
+        # === НАРЕЗКА ===
+        if is_image:
+            output_parts = await run_in_thread(
+                lambda: asyncio.run(split_image_to_grid(input_file, cols, rows, temp_dir))
+            )
+        elif is_video:
+            await status_msg.edit_text(f"⏳ Обрабатываю видео (может занять время)...")
+            output_parts = await run_in_thread(
+                lambda: asyncio.run(split_video_to_grid(input_file, cols, rows, temp_dir))
+            )
+
+        if not output_parts:
+            await status_msg.edit_text("❌ Ошибка при нарезке медиа")
+            return
+
+        logging.info(f"Created {len(output_parts)} parts for emoji pack")
+        await status_msg.edit_text(f"⏳ Создаю стикер-пак ({len(output_parts)} эмодзи)...")
+
+        # === СОЗДАНИЕ СТИКЕР-ПАКА ===
+        try:
+            pack_name = await create_custom_emoji_pack(
+                bot,
+                message.from_user.id,
+                output_parts,
+                is_video=is_video
+            )
+
+            # Формируем ссылку на пак
+            pack_link = f"https://t.me/addemoji/{pack_name}"
+
+            await status_msg.edit_text(
+                f"✅ **Эмодзи-пак создан!**\n\n"
+                f"🎨 Сетка: {cols}x{rows}\n"
+                f"📦 Эмодзи: {len(output_parts)}\n"
+                f"🎬 Тип: {'Анимированные' if is_video else 'Статичные'}\n\n"
+                f"🔗 [Добавить пак]({pack_link})\n\n"
+                f"Теперь вы можете использовать эти эмодзи в любом чате!",
+                parse_mode="Markdown",
+                disable_web_page_preview=False
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logging.error(f"Failed to create emoji pack: {error_msg}")
+
+            if "STICKERSET_INVALID" in error_msg:
+                await status_msg.edit_text("❌ Ошибка создания пака. Попробуйте уменьшить размер сетки.")
+            elif "name is already" in error_msg.lower():
+                await status_msg.edit_text("❌ Пак с таким именем уже существует. Попробуйте ещё раз.")
+            else:
+                await status_msg.edit_text(f"❌ Ошибка создания пака: {error_msg[:100]}")
+
+    except Exception as e:
+        logging.error(f"Emoji pack creation error: {e}", exc_info=True)
+        await message.answer(f"❌ Произошла ошибка: {str(e)[:100]}")
+
+    finally:
+        # Очистка временных файлов
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                logging.info(f"Cleaned up temp dir: {temp_dir}")
+        except Exception as e:
+            logging.error(f"Failed to cleanup temp dir: {e}")
+
+        try:
+            await status_msg.delete()
+        except:
+            pass
+
+
 @dp.message(Command("trump", "трамп"))
 async def cmd_trump(message: Message):
     """Переписать текст в стиле Трампа с картинкой"""
@@ -1353,6 +1814,15 @@ async def cmd_help(message: Message):
 /inv [текст] — инверсия цветов
 /vin [текст] — винтажная обработка
 
+**Эмодзи-паки:**
+/emoji — нарезать картинку/видео на эмодзи
+/emoji 4x4 — сетка 4x4 (16 эмодзи)
+/emoji 5x5 — сетка 5x5 (25 эмодзи)
+
+**Другие команды:**
+/tenet — переворот медиа (зеркало, реверс, антипод)
+/trump — переписать текст в стиле Трампа
+
 **Как использовать:**
 
 1. Ответь командой на любое сообщение
@@ -1365,11 +1835,13 @@ async def cmd_help(message: Message):
 /d мой текст 🚀 — с текстом и эмоджи
 /inv — инверсия
 /vin винтаж — винтажный эффект
+/emoji — создать эмодзи-пак из картинки
 
 **Особенности:**
 - Цветные эмоджи через Twemoji
 - Эффекты только для изображений
 - Видео до 30 секунд
+- Эмодзи-паки: любое разрешение, автоматическая сетка
 """
     await message.answer(help_text)
 
@@ -1594,13 +2066,25 @@ async def get_random_fallback_image(message_id: int) -> str:
 async def handle_media_with_caption(message: Message):
     """Обработка картинок/документов с командой в подписи"""
     caption = message.caption or ""
-    
-    cmd_prefixes = ("/d ", "/dd ", "/д ", "/дд ", "/inv ", "/vin ")
-    cmd_list = ["/d", "/dd", "/д", "/дд", "/inv", "/vin"]
-    
+
+    cmd_prefixes = ("/d ", "/dd ", "/д ", "/дд ", "/inv ", "/vin ", "/emoji ")
+    cmd_list = ["/d", "/dd", "/д", "/дд", "/inv", "/vin", "/emoji"]
+
     is_cmd = caption.lower().startswith(tuple(cmd_prefixes)) or caption.lower() in cmd_list
-    
+
     if not is_cmd:
+        return
+
+    # === ОБРАБОТКА /emoji ===
+    if caption.lower().startswith("/emoji"):
+        # Создаём фейковое reply сообщение для переиспользования логики cmd_emoji
+        # Сохраняем оригинальное сообщение как reply_to_message
+        fake_message = message
+        fake_message.reply_to_message = message
+        fake_message.text = caption  # Используем caption как text для парсинга
+
+        # Вызываем обработчик emoji
+        await cmd_emoji(fake_message)
         return
     
     # === ДОБАВЬ ПРОВЕРКУ НАГРУЗКИ ===
