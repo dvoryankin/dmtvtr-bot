@@ -1734,11 +1734,6 @@ async def cmd_emoji(message: Message):
         except Exception as e:
             logging.error(f"Failed to cleanup temp dir: {e}")
 
-        try:
-            await status_msg.delete()
-        except:
-            pass
-
 
 @dp.message(Command("trump", "трамп"))
 async def cmd_trump(message: Message):
