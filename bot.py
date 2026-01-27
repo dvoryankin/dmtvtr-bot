@@ -10,7 +10,7 @@ from pathlib import Path
 from shutil import copy2
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message, FSInputFile, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageEnhance
@@ -55,6 +55,9 @@ logging.basicConfig(
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# Хранение временных данных для emoji pack
+emoji_pack_pending = {}
 
 OVERLOAD_IMAGE_2 = "/root/bots/2.jpg"
 OVERLOAD_IMAGE_3 = "/root/bots/3.png"
@@ -1535,6 +1538,133 @@ async def cmd_tenet(message: Message):
 
 # === END TENET ===
 
+async def process_emoji_pack(message: Message, user_id: int, input_file: str, is_video: bool, cols: int, rows: int, temp_dir: str):
+    """Вспомогательная функция для создания эмодзи-пака с заданными параметрами"""
+    try:
+        total_emojis = cols * rows
+        if total_emojis > 50:
+            await message.answer(f"❌ Слишком большая сетка: {cols}x{rows} = {total_emojis} эмодзи\nМаксимум 50 эмодзи в паке")
+            return False
+
+        status_msg = await message.answer(f"⏳ Нарезаю на сетку {cols}x{rows} ({total_emojis} эмодзи)...")
+
+        # === НАРЕЗКА ===
+        if is_video:
+            await status_msg.edit_text(f"⏳ Обрабатываю видео (может занять время)...")
+            output_parts = await run_in_thread(
+                lambda: asyncio.run(split_video_to_grid(input_file, cols, rows, temp_dir))
+            )
+        else:
+            output_parts = await run_in_thread(
+                lambda: asyncio.run(split_image_to_grid(input_file, cols, rows, temp_dir))
+            )
+
+        if not output_parts:
+            await status_msg.edit_text("❌ Ошибка при нарезке медиа")
+            return False
+
+        logging.info(f"Created {len(output_parts)} parts for emoji pack")
+        await status_msg.edit_text(f"⏳ Создаю стикер-пак ({len(output_parts)} эмодзи)...")
+
+        # === СОЗДАНИЕ СТИКЕР-ПАКА ===
+        pack_name = await create_custom_emoji_pack(
+            bot,
+            user_id,
+            output_parts,
+            is_video=is_video
+        )
+
+        # Формируем ссылку на пак
+        pack_link = f"https://t.me/addemoji/{pack_name}"
+
+        await status_msg.edit_text(
+            f"✅ **Эмодзи-пак создан!**\n\n"
+            f"🎨 Сетка: {cols}x{rows}\n"
+            f"📦 Эмодзи: {len(output_parts)}\n"
+            f"🎬 Тип: {'Анимированные' if is_video else 'Статичные'}\n\n"
+            f"🔗 [Добавить пак]({pack_link})\n\n"
+            f"Теперь вы можете использовать эти эмодзи в любом чате!",
+            parse_mode="Markdown",
+            disable_web_page_preview=False
+        )
+        return True
+
+    except Exception as e:
+        error_msg = str(e)
+        logging.error(f"Failed to create emoji pack: {error_msg}")
+
+        if "STICKERSET_INVALID" in error_msg:
+            await message.answer("❌ Ошибка создания пака. Попробуйте уменьшить размер сетки.")
+        elif "name is already" in error_msg.lower():
+            await message.answer("❌ Пак с таким именем уже существует. Попробуйте ещё раз.")
+        else:
+            await message.answer(f"❌ Ошибка создания пака: {error_msg[:100]}")
+        return False
+
+
+@dp.callback_query(F.data.startswith("emoji_grid:"))
+async def emoji_grid_callback(callback: CallbackQuery):
+    """Обработчик выбора размера сетки для эмодзи-пака"""
+    import tempfile
+    import shutil
+
+    await callback.answer()
+
+    # Парсим callback data: emoji_grid:user_id:cols:rows
+    parts = callback.data.split(":")
+    if len(parts) != 4:
+        await callback.message.edit_text("❌ Ошибка обработки")
+        return
+
+    _, user_id_str, cols_str, rows_str = parts
+    user_id = int(user_id_str)
+    cols = int(cols_str)
+    rows = int(rows_str)
+
+    # Проверяем что это тот же пользователь
+    if callback.from_user.id != user_id:
+        await callback.answer("❌ Это не ваше сообщение", show_alert=True)
+        return
+
+    # Получаем сохранённые данные
+    key = f"{user_id}_{callback.message.message_id}"
+    if key not in emoji_pack_pending:
+        await callback.message.edit_text("❌ Данные устарели. Отправьте картинку заново.")
+        return
+
+    data = emoji_pack_pending[key]
+    input_file = data['input_file']
+    is_video = data['is_video']
+    temp_dir = data['temp_dir']
+
+    try:
+        await callback.message.edit_text(f"✅ Выбрана сетка {cols}x{rows}")
+
+        # Создаём пак
+        success = await process_emoji_pack(
+            callback.message,
+            user_id,
+            input_file,
+            is_video,
+            cols,
+            rows,
+            temp_dir
+        )
+
+    finally:
+        # Очистка
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                logging.info(f"Cleaned up temp dir: {temp_dir}")
+        except Exception as e:
+            logging.error(f"Failed to cleanup temp dir: {e}")
+
+        # Удаляем из pending
+        if key in emoji_pack_pending:
+            del emoji_pack_pending[key]
+
+
 @dp.message(Command("emoji"))
 async def cmd_emoji(message: Message):
     """Обработчик команды /emoji - создание custom emoji sticker packs"""
@@ -1542,7 +1672,7 @@ async def cmd_emoji(message: Message):
     import shutil
 
     # Парсим команду для извлечения размера сетки
-    parts = message.text.split()
+    parts = message.text.split() if message.text else []
     user_grid = parts[1] if len(parts) > 1 else None
 
     # Проверяем reply
@@ -1636,11 +1766,10 @@ async def cmd_emoji(message: Message):
             await status_msg.edit_text("❌ Отправь фото, видео, GIF или стикер")
             return
 
-        # === ОПРЕДЕЛЯЕМ РАЗМЕР СЕТКИ ===
+        # === ОПРЕДЕЛЯЕМ РАЗМЕР И ПОКАЗЫВАЕМ КНОПКИ ===
         if is_image:
             img = Image.open(input_file)
             width, height = img.size
-            cols, rows = calculate_grid_size(width, height, user_grid)
         elif is_video:
             # Получаем размеры видео
             cmd = [
@@ -1657,82 +1786,93 @@ async def cmd_emoji(message: Message):
 
             try:
                 width, height = map(int, result.stdout.strip().split(','))
-                cols, rows = calculate_grid_size(width, height, user_grid)
             except:
                 await status_msg.edit_text("❌ Не удалось определить размеры видео")
                 return
 
-        total_emojis = cols * rows
-        if total_emojis > 50:
-            await status_msg.edit_text(f"❌ Слишком большая сетка: {cols}x{rows} = {total_emojis} эмодзи\nМаксимум 50 эмодзи в паке")
+        # Проверяем тип чата
+        is_private_chat = message.chat.type == "private"
+
+        if is_private_chat and not user_grid:
+            # В личке показываем кнопки выбора
+            await status_msg.delete()
+
+            # Предлагаем варианты сетки
+            grid_options = [
+                (4, 3), (6, 4), (8, 5), (10, 7), (12, 8)
+            ]
+
+            # Фильтруем опции чтобы не превысить 50 эмодзи
+            grid_options = [(c, r) for c, r in grid_options if c * r <= 50]
+
+            # Создаём кнопки
+            keyboard = []
+            for cols, rows in grid_options:
+                total = cols * rows
+                keyboard.append([InlineKeyboardButton(
+                    text=f"{cols}×{rows} ({total} эмодзи)",
+                    callback_data=f"emoji_grid:{message.from_user.id}:{cols}:{rows}"
+                )])
+
+            markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+            # Сохраняем данные для callback
+            key = f"{message.from_user.id}_{message.message_id}"
+            emoji_pack_pending[key] = {
+                'input_file': input_file,
+                'is_video': is_video,
+                'temp_dir': temp_dir,
+                'width': width,
+                'height': height
+            }
+
+            quality_warning = ""
+            if width > 1000 or height > 1000:
+                quality_warning = f"\n\n⚠️ Ваша картинка {width}×{height}. При выборе больших сеток эмодзи будут растянуты, качество может быть хуже."
+
+            await message.answer(
+                f"✅ **Картинка получена!**\n"
+                f"📐 Размер: {width}×{height} пикселей\n\n"
+                f"🔪 **Выберите размер сетки**\n\n"
+                f"Рекомендую размер до 30-40 эмодзи.\n\n"
+                f"Помните, что эту картинку потом придется собирать вручную, поэтому большие сетки натыкивать придется долго. "
+                f"Выбирайте большие размеры только если знаете, что делаете.{quality_warning}",
+                reply_markup=markup,
+                parse_mode="Markdown"
+            )
+
+            # Не удаляем temp_dir здесь, он будет нужен в callback
             return
 
-        await status_msg.edit_text(f"⏳ Нарезаю на сетку {cols}x{rows} ({total_emojis} эмодзи)...")
+        else:
+            # В группе или если указан размер - сразу создаём
+            cols, rows = calculate_grid_size(width, height, user_grid)
+            await status_msg.delete()
 
-        # === НАРЕЗКА ===
-        if is_image:
-            output_parts = await run_in_thread(
-                lambda: asyncio.run(split_image_to_grid(input_file, cols, rows, temp_dir))
-            )
-        elif is_video:
-            await status_msg.edit_text(f"⏳ Обрабатываю видео (может занять время)...")
-            output_parts = await run_in_thread(
-                lambda: asyncio.run(split_video_to_grid(input_file, cols, rows, temp_dir))
-            )
-
-        if not output_parts:
-            await status_msg.edit_text("❌ Ошибка при нарезке медиа")
-            return
-
-        logging.info(f"Created {len(output_parts)} parts for emoji pack")
-        await status_msg.edit_text(f"⏳ Создаю стикер-пак ({len(output_parts)} эмодзи)...")
-
-        # === СОЗДАНИЕ СТИКЕР-ПАКА ===
-        try:
-            pack_name = await create_custom_emoji_pack(
-                bot,
+            success = await process_emoji_pack(
+                message,
                 message.from_user.id,
-                output_parts,
-                is_video=is_video
+                input_file,
+                is_video,
+                cols,
+                rows,
+                temp_dir
             )
-
-            # Формируем ссылку на пак
-            pack_link = f"https://t.me/addemoji/{pack_name}"
-
-            await status_msg.edit_text(
-                f"✅ **Эмодзи-пак создан!**\n\n"
-                f"🎨 Сетка: {cols}x{rows}\n"
-                f"📦 Эмодзи: {len(output_parts)}\n"
-                f"🎬 Тип: {'Анимированные' if is_video else 'Статичные'}\n\n"
-                f"🔗 [Добавить пак]({pack_link})\n\n"
-                f"Теперь вы можете использовать эти эмодзи в любом чате!",
-                parse_mode="Markdown",
-                disable_web_page_preview=False
-            )
-
-        except Exception as e:
-            error_msg = str(e)
-            logging.error(f"Failed to create emoji pack: {error_msg}")
-
-            if "STICKERSET_INVALID" in error_msg:
-                await status_msg.edit_text("❌ Ошибка создания пака. Попробуйте уменьшить размер сетки.")
-            elif "name is already" in error_msg.lower():
-                await status_msg.edit_text("❌ Пак с таким именем уже существует. Попробуйте ещё раз.")
-            else:
-                await status_msg.edit_text(f"❌ Ошибка создания пака: {error_msg[:100]}")
 
     except Exception as e:
         logging.error(f"Emoji pack creation error: {e}", exc_info=True)
         await message.answer(f"❌ Произошла ошибка: {str(e)[:100]}")
 
     finally:
-        # Очистка временных файлов
-        try:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-                logging.info(f"Cleaned up temp dir: {temp_dir}")
-        except Exception as e:
-            logging.error(f"Failed to cleanup temp dir: {e}")
+        # Очистка временных файлов (только если не ждём callback)
+        key = f"{message.from_user.id}_{message.message_id}"
+        if key not in emoji_pack_pending:
+            try:
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                    logging.info(f"Cleaned up temp dir: {temp_dir}")
+            except Exception as e:
+                logging.error(f"Failed to cleanup temp dir: {e}")
 
 
 @dp.message(Command("trump", "трамп"))
