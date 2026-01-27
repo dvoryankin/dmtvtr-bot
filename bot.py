@@ -1601,13 +1601,14 @@ async def create_emoji_pack_with_name(message: Message, user_id: int, data: dict
             parse_mode="Markdown"
         )
 
-        # Создаем прозрачное изображение для заполнителей (чтобы сетка не съезжала)
-        transparent_webp = f"{temp_dir}/transparent.webp"
-        transparent_img = Image.new("RGBA", (100, 100), (255, 255, 255, 0))
-        transparent_img.save(transparent_webp, "WEBP")
+        # Создаем узкое изображение для заполнителей (чтобы сетка не съезжала)
+        # Используем размер 1x100 (почти невидимое, как разделитель)
+        spacer_webp = f"{temp_dir}/spacer.webp"
+        spacer_img = Image.new("RGBA", (1, 100), (255, 255, 255, 1))  # Почти прозрачное
+        spacer_img.save(spacer_webp, "WEBP", quality=95)
 
-        with open(transparent_webp, "rb") as f:
-            transparent_data = f.read()
+        with open(spacer_webp, "rb") as f:
+            spacer_data = f.read()
 
         # Создаем InputSticker объекты с учетом сетки
         stickers = []
@@ -1642,10 +1643,10 @@ async def create_emoji_pack_with_name(message: Message, user_id: int, data: dict
                 except Exception as e:
                     logging.error(f"Failed to prepare sticker {i}: {e}")
 
-            # Добавляем прозрачные заполнители в конец строки
+            # Добавляем узкие заполнители в конец строки (1px шириной)
             for pad_idx in range(padding_count):
                 sticker = InputSticker(
-                    sticker=BufferedInputFile(transparent_data, filename=f"pad_{row_idx}_{pad_idx}.webp"),
+                    sticker=BufferedInputFile(spacer_data, filename=f"spacer_{row_idx}_{pad_idx}.webp"),
                     emoji_list=["⬜"],
                     format="static"
                 )
@@ -1992,6 +1993,20 @@ async def cmd_emoji(message: Message):
                 await status_msg.edit_text("❌ Не удалось определить размеры видео")
                 return
 
+            # Получаем длительность видео
+            cmd_duration = [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                input_file
+            ]
+            result_duration = subprocess.run(cmd_duration, capture_output=True, text=True)
+            try:
+                duration = float(result_duration.stdout.strip())
+            except:
+                duration = 0.0
+
         # Проверяем тип чата
         is_private_chat = message.chat.type == "private"
 
@@ -2033,17 +2048,41 @@ async def cmd_emoji(message: Message):
                 'height': height
             }
 
-            quality_warning = ""
-            if width > 1000 or height > 1000:
-                quality_warning = f"\n\n⚠️ Ваша картинка {width}×{height}. При выборе больших сеток эмодзи будут растянуты, качество может быть хуже."
+            # Формируем сообщение в зависимости от типа медиа
+            if is_video:
+                media_type = "Видео"
+                media_icon = "🎬"
+                duration_text = f"\n⏱️ Длительность: {duration:.1f} сек" if duration > 0 else ""
+
+                quality_warning = ""
+                if width > 1000 or height > 1000:
+                    quality_warning = f"\n\n⚠️ Ваше видео {width}×{height}. При выборе больших сеток эмодзи будут растянуты, качество может быть хуже."
+
+                warning_text = (
+                    f"Помните, что эту картинку потом придется собирать вручную, поэтому большие сетки натыкивать придется долго.\n"
+                    f"Анимированная картинка из большого количества эмодзи при слабом интернете прогружается не сразу — "
+                    f"и картинка будет ломаться у некоторых людей. Выбирайте большие размеры только если знаете, что делаете."
+                )
+            else:
+                media_type = "Картинка"
+                media_icon = "🖼️"
+                duration_text = ""
+
+                quality_warning = ""
+                if width > 1000 or height > 1000:
+                    quality_warning = f"\n\n⚠️ Ваша картинка {width}×{height}. При выборе больших сеток эмодзи будут растянуты, качество может быть хуже."
+
+                warning_text = (
+                    f"Помните, что эту картинку потом придется собирать вручную, поэтому большие сетки натыкивать придется долго. "
+                    f"Выбирайте большие размеры только если знаете, что делаете."
+                )
 
             await message.answer(
-                f"✅ **Картинка получена!**\n"
-                f"📐 Размер: {width}×{height} пикселей\n\n"
-                f"🔪 **Выберите размер сетки**\n\n"
+                f"✅ **{media_type} получен{'' if is_video else 'а'}!**\n"
+                f"📐 Размер: {width}×{height} пикселей{duration_text}\n\n"
+                f"{media_icon} **Выберите размер сетки{'для анимированных эмодзи' if is_video else ''}.**\n\n"
                 f"Рекомендую размер до 30-40 эмодзи.\n\n"
-                f"Помните, что эту картинку потом придется собирать вручную, поэтому большие сетки натыкивать придется долго. "
-                f"Выбирайте большие размеры только если знаете, что делаете.{quality_warning}",
+                f"{warning_text}{quality_warning}",
                 reply_markup=markup,
                 parse_mode="Markdown"
             )
