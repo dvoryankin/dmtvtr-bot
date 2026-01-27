@@ -58,6 +58,7 @@ dp = Dispatcher()
 
 # Хранение временных данных для emoji pack
 emoji_pack_pending = {}
+emoji_pack_naming = {}  # Ожидание ввода названия пака
 
 OVERLOAD_IMAGE_2 = "/root/bots/2.jpg"
 OVERLOAD_IMAGE_3 = "/root/bots/3.png"
@@ -1538,6 +1539,143 @@ async def cmd_tenet(message: Message):
 
 # === END TENET ===
 
+async def create_emoji_pack_with_name(message: Message, user_id: int, data: dict, pack_title: str):
+    """Создание эмодзи-пака с заданным названием и отображением прогресса"""
+    import shutil
+
+    input_file = data['input_file']
+    is_video = data['is_video']
+    temp_dir = data['temp_dir']
+    cols = data['cols']
+    rows = data['rows']
+
+    try:
+        total_emojis = cols * rows
+
+        # Сообщение о начале
+        status_msg = await message.answer(
+            f"🔪 **Режу картинку на {cols}×{rows}...**\n"
+            f"📝 Название: **{pack_title}**\n\n"
+            f"⏳ Прогресс: 0%",
+            parse_mode="Markdown"
+        )
+
+        # === НАРЕЗКА ===
+        if is_video:
+            output_parts = await run_in_thread(
+                lambda: asyncio.run(split_video_to_grid(input_file, cols, rows, temp_dir))
+            )
+        else:
+            output_parts = await run_in_thread(
+                lambda: asyncio.run(split_image_to_grid(input_file, cols, rows, temp_dir))
+            )
+
+        if not output_parts:
+            await status_msg.edit_text("❌ Ошибка при нарезке медиа")
+            return
+
+        await status_msg.edit_text(
+            f"🔪 **Режу картинку на {cols}×{rows}...**\n"
+            f"📝 Название: **{pack_title}**\n\n"
+            f"⏳ Прогресс: 50%",
+            parse_mode="Markdown"
+        )
+
+        logging.info(f"Created {len(output_parts)} parts for emoji pack")
+
+        # === СОЗДАНИЕ СТИКЕР-ПАКА ===
+        from aiogram.types import BufferedInputFile, InputSticker
+        import time
+
+        # Генерируем уникальное имя пака
+        timestamp = int(time.time())
+        bot_info = await bot.me()
+        bot_username = bot_info.username
+
+        pack_name = f"img_{user_id}_{timestamp}_by_{bot_username}"
+
+        await status_msg.edit_text(
+            f"🔪 **Режу картинку на {cols}×{rows}...**\n"
+            f"📝 Название: **{pack_title}**\n\n"
+            f"⏳ Прогресс: 75%",
+            parse_mode="Markdown"
+        )
+
+        # Создаем InputSticker объекты
+        stickers = []
+        emoji_map = ["🟦", "🟩", "🟥", "🟧", "🟨", "🟪", "⬜", "⬛", "🔵", "🟫",
+                     "🔴", "🟢", "🟡", "🟣", "🟤", "⚫", "⚪", "🔶", "🔷", "🔸"]
+
+        for i, part_path in enumerate(output_parts):
+            try:
+                with open(part_path, "rb") as f:
+                    file_data = f.read()
+
+                filename = f"part_{i}.webm" if is_video else f"part_{i}.webp"
+
+                sticker = InputSticker(
+                    sticker=BufferedInputFile(file_data, filename=filename),
+                    emoji_list=[emoji_map[i % len(emoji_map)]],
+                    format="video" if is_video else "static"
+                )
+                stickers.append(sticker)
+
+            except Exception as e:
+                logging.error(f"Failed to prepare sticker {i}: {e}")
+
+        if not stickers:
+            await status_msg.edit_text("❌ Не удалось подготовить стикеры")
+            return
+
+        # Создаем стикер-пак
+        result = await bot.create_new_sticker_set(
+            user_id=user_id,
+            name=pack_name,
+            title=pack_title,
+            stickers=stickers,
+            sticker_type="custom_emoji",
+        )
+
+        if not result:
+            await status_msg.edit_text("❌ Не удалось создать стикер-пак")
+            return
+
+        logging.info(f"Custom emoji pack created successfully: {pack_name}")
+
+        # Формируем ссылку на пак
+        pack_link = f"https://t.me/addemoji/{pack_name}"
+
+        await status_msg.edit_text(
+            f"🎉 **Готово! Эмодзи-пак создан!**\n\n"
+            f"🔗 **Ссылка:** {pack_link}\n\n"
+            f"Нажмите на ссылку чтобы добавить эмодзи-пак и использовать их в своих сообщениях. "
+            f"Просто соберите картинку в любом посте из эмодзи, как из паззлов.\n\n"
+            f"📤 Отправьте новую картинку, видео или гифку, чтобы создать еще один пак.",
+            parse_mode="Markdown",
+            disable_web_page_preview=False
+        )
+
+    except Exception as e:
+        error_msg = str(e)
+        logging.error(f"Failed to create emoji pack: {error_msg}", exc_info=True)
+
+        if "STICKERSET_INVALID" in error_msg:
+            await message.answer("❌ Ошибка создания пака. Попробуйте уменьшить размер сетки.")
+        elif "name is already" in error_msg.lower():
+            await message.answer("❌ Пак с таким именем уже существует. Попробуйте ещё раз.")
+        else:
+            await message.answer(f"❌ Ошибка создания пака: {error_msg[:100]}")
+
+    finally:
+        # Очистка
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                logging.info(f"Cleaned up temp dir: {temp_dir}")
+        except Exception as e:
+            logging.error(f"Failed to cleanup temp dir: {e}")
+
+
 async def process_emoji_pack(message: Message, user_id: int, input_file: str, is_video: bool, cols: int, rows: int, temp_dir: str):
     """Вспомогательная функция для создания эмодзи-пака с заданными параметрами"""
     try:
@@ -1605,9 +1743,6 @@ async def process_emoji_pack(message: Message, user_id: int, input_file: str, is
 @dp.callback_query(F.data.startswith("emoji_grid:"))
 async def emoji_grid_callback(callback: CallbackQuery):
     """Обработчик выбора размера сетки для эмодзи-пака"""
-    import tempfile
-    import shutil
-
     await callback.answer()
 
     # Парсим callback data: emoji_grid:user_id:cols:rows
@@ -1633,36 +1768,75 @@ async def emoji_grid_callback(callback: CallbackQuery):
         return
 
     data = emoji_pack_pending[key]
-    input_file = data['input_file']
-    is_video = data['is_video']
-    temp_dir = data['temp_dir']
+    data['cols'] = cols
+    data['rows'] = rows
 
-    try:
-        await callback.message.edit_text(f"✅ Выбрана сетка {cols}x{rows}")
+    # Показываем запрос названия
+    keyboard = [[InlineKeyboardButton(
+        text=f"Стандартное название",
+        callback_data=f"emoji_name:default:{user_id}"
+    )]]
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-        # Создаём пак
-        success = await process_emoji_pack(
-            callback.message,
-            user_id,
-            input_file,
-            is_video,
-            cols,
-            rows,
-            temp_dir
-        )
+    await callback.message.edit_text(
+        f"✅ **Выбрана сетка:** {cols}×{rows}\n\n"
+        f"📝 **Введите название пака** (до 15 символов):\n\n"
+        f"Или нажмите кнопку для стандартного названия с размером сетки — **{cols}×{rows}**\n\n"
+        f"💡 **Совет** — если вы хотите, чтобы паком пользовались другие люди, добавьте в название размер сетки, "
+        f"например **3х5**. Так люди смогут понять, как именно надо собирать картинку, сколько эмодзи должно быть в ряду.",
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
 
-    finally:
-        # Очистка
-        try:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-                logging.info(f"Cleaned up temp dir: {temp_dir}")
-        except Exception as e:
-            logging.error(f"Failed to cleanup temp dir: {e}")
+    # Сохраняем в хранилище ожидания названия
+    naming_key = f"{user_id}"
+    emoji_pack_naming[naming_key] = {
+        'message_id': callback.message.message_id,
+        'pending_key': key
+    }
 
-        # Удаляем из pending
-        if key in emoji_pack_pending:
-            del emoji_pack_pending[key]
+
+@dp.callback_query(F.data.startswith("emoji_name:"))
+async def emoji_name_callback(callback: CallbackQuery):
+    """Обработчик кнопки стандартного названия"""
+    await callback.answer()
+
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        return
+
+    _, name_type, user_id_str = parts
+    user_id = int(user_id_str)
+
+    if callback.from_user.id != user_id:
+        await callback.answer("❌ Это не ваше сообщение", show_alert=True)
+        return
+
+    naming_key = f"{user_id}"
+    if naming_key not in emoji_pack_naming:
+        await callback.message.edit_text("❌ Данные устарели.")
+        return
+
+    naming_data = emoji_pack_naming[naming_key]
+    pending_key = naming_data['pending_key']
+
+    if pending_key not in emoji_pack_pending:
+        await callback.message.edit_text("❌ Данные устарели.")
+        del emoji_pack_naming[naming_key]
+        return
+
+    data = emoji_pack_pending[pending_key]
+    cols = data['cols']
+    rows = data['rows']
+
+    # Стандартное название
+    pack_title = f"{cols}x{rows}"
+
+    # Создаём пак
+    await create_emoji_pack_with_name(callback.message, user_id, data, pack_title)
+
+    # Очистка
+    del emoji_pack_naming[naming_key]
 
 
 @dp.message(Command("emoji"))
@@ -1797,9 +1971,14 @@ async def cmd_emoji(message: Message):
             # В личке показываем кнопки выбора
             await status_msg.delete()
 
-            # Предлагаем варианты сетки
+            # Предлагаем варианты сетки (ширина кратна 5 для правильного отображения в Telegram)
             grid_options = [
-                (4, 3), (6, 4), (8, 5), (10, 7), (12, 8)
+                (5, 3),   # 15 эмодзи
+                (5, 4),   # 20 эмодзи
+                (5, 5),   # 25 эмодзи
+                (5, 6),   # 30 эмодзи
+                (5, 8),   # 40 эмодзи
+                (10, 5),  # 50 эмодзи
             ]
 
             # Фильтруем опции чтобы не превысить 50 эмодзи
@@ -2293,9 +2472,40 @@ async def handle_media_with_caption(message: Message):
 @dp.message(F.text)
 async def handle_command(message: Message):
     txt = message.text.strip()
+
+    # === ПРОВЕРКА ВВОДА НАЗВАНИЯ ЭМОДЗИ-ПАКА ===
+    naming_key = f"{message.from_user.id}"
+    if naming_key in emoji_pack_naming:
+        # Пользователь вводит название пака
+        naming_data = emoji_pack_naming[naming_key]
+        pending_key = naming_data['pending_key']
+
+        if pending_key not in emoji_pack_pending:
+            await message.answer("❌ Данные устарели. Отправьте картинку заново.")
+            del emoji_pack_naming[naming_key]
+            return
+
+        data = emoji_pack_pending[pending_key]
+
+        # Валидация названия
+        pack_title = txt[:15]  # Ограничиваем 15 символами
+        if not pack_title:
+            await message.answer("❌ Название не может быть пустым. Попробуйте ещё раз.")
+            return
+
+        # Создаём пак
+        await create_emoji_pack_with_name(message, message.from_user.id, data, pack_title)
+
+        # Очистка
+        del emoji_pack_naming[naming_key]
+        if pending_key in emoji_pack_pending:
+            del emoji_pack_pending[pending_key]
+        return
+
+    # === ПРОВЕРКА КОМАНД ===
     cmd_prefixes = ("/d ", "/dd ", "/д ", "/дд ", "/inv ", "/vin ")
     cmd_list = ["/d", "/dd", "/д", "/дд", "/inv", "/vin"]
-    
+
     is_cmd = txt.lower() in cmd_list or any(txt.lower().startswith(p) for p in cmd_prefixes)
     if not is_cmd:
         return
