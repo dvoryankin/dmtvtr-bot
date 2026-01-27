@@ -1,6 +1,8 @@
 import os
 import asyncio
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 import subprocess
 import random
 from groq import Groq
