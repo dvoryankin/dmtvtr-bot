@@ -1601,27 +1601,55 @@ async def create_emoji_pack_with_name(message: Message, user_id: int, data: dict
             parse_mode="Markdown"
         )
 
-        # Создаем InputSticker объекты
+        # Создаем прозрачное изображение для заполнителей (чтобы сетка не съезжала)
+        transparent_webp = f"{temp_dir}/transparent.webp"
+        transparent_img = Image.new("RGBA", (100, 100), (255, 255, 255, 0))
+        transparent_img.save(transparent_webp, "WEBP")
+
+        with open(transparent_webp, "rb") as f:
+            transparent_data = f.read()
+
+        # Создаем InputSticker объекты с учетом сетки
         stickers = []
         emoji_map = ["🟦", "🟩", "🟥", "🟧", "🟨", "🟪", "⬜", "⬛", "🔵", "🟫",
                      "🔴", "🟢", "🟡", "🟣", "🟤", "⚫", "⚪", "🔶", "🔷", "🔸"]
 
-        for i, part_path in enumerate(output_parts):
-            try:
-                with open(part_path, "rb") as f:
-                    file_data = f.read()
+        # Telegram показывает эмодзи по 8 в строке
+        telegram_row_width = 8
+        padding_count = max(0, telegram_row_width - cols)
 
-                filename = f"part_{i}.webm" if is_video else f"part_{i}.webp"
+        for row_idx in range(rows):
+            # Добавляем эмодзи из текущей строки изображения
+            for col_idx in range(cols):
+                i = row_idx * cols + col_idx
+                if i >= len(output_parts):
+                    break
 
+                part_path = output_parts[i]
+                try:
+                    with open(part_path, "rb") as f:
+                        file_data = f.read()
+
+                    filename = f"part_{i}.webm" if is_video else f"part_{i}.webp"
+
+                    sticker = InputSticker(
+                        sticker=BufferedInputFile(file_data, filename=filename),
+                        emoji_list=[emoji_map[i % len(emoji_map)]],
+                        format="video" if is_video else "static"
+                    )
+                    stickers.append(sticker)
+
+                except Exception as e:
+                    logging.error(f"Failed to prepare sticker {i}: {e}")
+
+            # Добавляем прозрачные заполнители в конец строки
+            for pad_idx in range(padding_count):
                 sticker = InputSticker(
-                    sticker=BufferedInputFile(file_data, filename=filename),
-                    emoji_list=[emoji_map[i % len(emoji_map)]],
-                    format="video" if is_video else "static"
+                    sticker=BufferedInputFile(transparent_data, filename=f"pad_{row_idx}_{pad_idx}.webp"),
+                    emoji_list=["⬜"],
+                    format="static"
                 )
                 stickers.append(sticker)
-
-            except Exception as e:
-                logging.error(f"Failed to prepare sticker {i}: {e}")
 
         if not stickers:
             await status_msg.edit_text("❌ Не удалось подготовить стикеры")
