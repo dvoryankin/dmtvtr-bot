@@ -3,6 +3,7 @@ import asyncio
 import logging
 import subprocess
 import random
+from groq import Groq
 from pathlib import Path
 from shutil import copy2
 
@@ -13,10 +14,12 @@ from aiogram.filters import Command
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageEnhance
 from pilmoji import Pilmoji
 
-# ==========================================
-# ⚠️ ВСТАВЬ СЮДА НОВЫЙ ТОКЕН
-TOKEN = "8229829474:AAGCSU7jQlZVsxUB-dfZfHD5imuLMdL2irQ"
-# ==========================================
+# API ключ Groq (из переменной окружения)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
+# Токен бота (из переменной окружения)
+TOKEN = os.getenv("BOT_TOKEN", "")
 
 BASE_DIR = Path(__file__).resolve().parent
 log_file = BASE_DIR / "bot.log"
@@ -50,6 +53,54 @@ logging.basicConfig(
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+OVERLOAD_IMAGE_2 = "/root/bots/2.jpg"
+OVERLOAD_IMAGE_3 = "/root/bots/3.png"
+MAX_CONCURRENT_PROCESSES = 2
+
+def check_server_load():
+    """Проверяет нагрузку на сервер"""
+    try:
+        result = subprocess.run(['pgrep', '-c', 'ffmpeg'], capture_output=True, text=True)
+        count = int(result.stdout.strip()) if result.returncode == 0 else 0
+        can_process = count < MAX_CONCURRENT_PROCESSES
+        
+        logging.info(f"Load check: {count} processes, limit {MAX_CONCURRENT_PROCESSES}, can_process={can_process}")
+        
+        return can_process, count
+    except Exception as e:
+        logging.warning(f"Failed to check load: {e}")
+        return True, 0  # Если ошибка проверки - разрешаем
+
+async def send_overload_message(message: Message, process_count: int):
+    """Отправляет сообщение о перегрузке"""
+    try:
+        logging.info(f"Sending overload message for {process_count} processes")
+        
+        if process_count <= MAX_CONCURRENT_PROCESSES + 1:
+            image_path = OVERLOAD_IMAGE_2
+            caption = f"⚠️ Сервер загружен ({process_count} процессов)\nПопробуй через секунду"
+            logging.info(f"Using light overload image: {image_path}")
+        else:
+            image_path = OVERLOAD_IMAGE_3
+            caption = f"⚠️ Сервер перегружен ({process_count} процессов)\nПодожди немного"
+            logging.info(f"Using heavy overload image: {image_path}")
+        
+        logging.info(f"Image exists: {os.path.exists(image_path)}")
+        
+        if os.path.exists(image_path):
+            await message.answer_photo(
+                FSInputFile(image_path),
+                caption=caption
+            )
+            logging.info("Overload image sent successfully")
+        else:
+            logging.error(f"Overload image not found: {image_path}")
+            await message.answer(f"⚠️ Сервер перегружен ({process_count} процессов)")
+    except Exception as e:
+        logging.error(f"Failed to send overload message: {e}", exc_info=True)
+        await message.answer("⚠️ Слишком много запросов")
+
 
 # --- Совместимость с Python 3.8 ---
 try:
@@ -132,6 +183,32 @@ def fit_text(text: str, font: ImageFont.ImageFont, max_width: int, img: Image.Im
         lines.append(current_line)
 
     return lines if lines else ["..."]
+
+def cleanup_old_temp_files():
+    """Удаляет временные файлы старше 1 часа"""
+    try:
+        import time
+        current_time = time.time()
+        count = 0
+        
+        for filename in os.listdir("."):
+            if filename.startswith("temp_"):
+                filepath = os.path.join(".", filename)
+                try:
+                    # Проверяем возраст файла
+                    file_age = current_time - os.path.getmtime(filepath)
+                    
+                    # Если старше 1 часа (3600 сек)
+                    if file_age > 3600:
+                        os.remove(filepath)
+                        count += 1
+                except:
+                    pass
+        
+        if count > 0:
+            logging.info(f"Cleaned up {count} old temp files")
+    except Exception as e:
+        logging.error(f"Cleanup error: {e}")
 
 
 def generate_text_image(text: str, output_path: str, size=(600, 600)) -> bool:
@@ -257,6 +334,278 @@ def apply_vintage(img_path: str, output_path: str) -> bool:
         return True
     except Exception as e:
         logging.error(f"Vintage error: {e}")
+        return False
+
+#генерация текста
+
+def generate_demotivator_text() -> str:
+    """Генерирует умную/саркастичную фразу для демотиватора"""
+    if not groq_client:
+        return random.choice([
+            "Жизнь - боль",
+            "Всё тленно",
+            "Ничего не вечно",
+            "Надежда умирает последней",
+        ])
+    
+    try:
+        prompts = [
+            # "Напиши короткую саркастическую фразу для демотиватора на русском. Максимум 8 слов. Только текст, без кавычек.",
+            # "Придумай философскую фразу для мема на русском. Максимум 8 слов. Только текст.",
+            # "Сгенерируй циничную мысль для демотиватора. Коротко, на русском, до 8 слов.",
+            # "Напиши абсурдную фразу в стиле русских демотиваторов. До 8 слов.",
+            "напиши какой-нибудь рофл рофлянский",
+            "напиши какую-нибудь шизу до 8 слов",
+        ]
+        
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "Ты генератор текста для демотиваторов. Пиши кратко, саркастично, по-русски."},
+                {"role": "user", "content": random.choice(prompts)}
+            ],
+            max_tokens=50,
+            temperature=1.2,  # Больше креатива
+        )
+        
+        text = response.choices[0].message.content.strip()
+        
+        # Убираем кавычки если есть
+        text = text.strip('"').strip("'").strip()
+        
+        # Если слишком длинный - берём первые 10 слов
+        words = text.split()
+        if len(words) > 10:
+            text = " ".join(words[:10]) + "..."
+        
+        logging.info(f"Generated text: {text}")
+        return text
+        
+    except Exception as e:
+        logging.error(f"Groq generation error: {e}")
+        return random.choice([
+            "Всё сложно",
+            "Бывает",
+            "Жизнь - боль",
+            "Ничего не вечно",
+        ])
+
+
+def trumpify_text(original_text: str) -> str:
+    """Переписывает текст в стиле Дональда Трампа"""
+    if not groq_client:
+        return f"{original_text} Tremendous! 🇺🇸"
+    
+    try:
+        prompt = f"""Перепиши текст в стиле твитов Дональда Трампа. Точно копируй его манеру!
+
+ОБЯЗАТЕЛЬНЫЕ элементы стиля:
+- ЗАГЛАВНЫЕ слова для усиления (VERY, GREAT, FAKE NEWS, TERRIBLE, etc)
+- Превосходные степени: biggest, greatest, best, worst, most, tremendous, fantastic, incredible, beautiful
+- Короткие резкие предложения. Много восклицательных знаков!
+- Фразы: "Many people are saying", "Believe me", "Everyone knows", "Like never before"
+- Местоимения: "I", "We", "They" (враги)
+- Третье лицо о себе: "President Trump", "Your favorite President"
+- Эмодзи: 🇺🇸 (обязательно 1-2 раза)
+- Драматизм и уверенность
+- Обвинения врагов в провалах
+
+ПРИМЕРЫ стиля Трампа:
+"Just had a GREAT meeting with world leaders. Many people saying it was the BEST meeting in history! America is WINNING again! 🇺🇸"
+
+"The Fake News Media won't report this, but our economy is doing TREMENDOUSLY! Jobs up, unemployment DOWN. Best numbers EVER! 🇺🇸"
+
+"I am doing a FANTASTIC job - everyone knows it. The haters and losers won't admit it, but history will remember! MAGA! 🇺🇸"
+
+Оригинал: "{original_text}"
+
+Ответ (только переписанный текст без комментариев):"""
+
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You write EXACTLY like Donald Trump tweets. Use his style: CAPS, superlatives, short sentences, confidence, drama. Add 1-2 🇺🇸 flags."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=350,
+            temperature=1.0,
+        )
+        
+        result = response.choices[0].message.content.strip()
+        result = result.strip('"').strip("'").strip()
+        
+        # Убираем markdown если есть
+        result = result.replace('**', '')
+        
+        logging.info(f"Trumpified: {original_text[:50]}")
+        return result
+        
+    except Exception as e:
+        logging.error(f"Trumpify error: {e}")
+        return f"{original_text} - FAKE NEWS! 🇺🇸"
+
+
+async def download_user_avatar(user_id: int, output_path: str) -> bool:
+    """Скачивает аватарку пользователя"""
+    try:
+        photos = await bot.get_user_profile_photos(user_id, limit=1)
+        if photos.total_count > 0:
+            await bot.download(photos.photos[0][-1], destination=output_path)
+            return True
+        return False
+    except Exception as e:
+        logging.error(f"Failed to download avatar: {e}")
+        return False
+
+
+def create_trump_tweet_image(text: str, output_path: str, avatar_path: str = None) -> bool:
+    """Создаёт картинку твита Трампа с динамическим размером"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        from pilmoji import Pilmoji
+        
+        logging.info(f"Creating Trump tweet image: {output_path}")
+        
+        # Шрифты (загружаем сначала для подсчёта размера)
+        try:
+            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+            font_username = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
+            font_text = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 17)
+        except:
+            font_name = ImageFont.load_default()
+            font_username = ImageFont.load_default()
+            font_text = ImageFont.load_default()
+        
+        # === ВЫЧИСЛЯЕМ РАЗМЕР ===
+        max_width = 520
+        
+        # Разбиваем текст на строки
+        words = text.split()
+        lines = []
+        current_line = []
+        
+        temp_img = Image.new('RGB', (1, 1))
+        with Pilmoji(temp_img) as pilmoji:
+            for word in words:
+                test_line = ' '.join(current_line + [word])
+                bbox = pilmoji.getsize(test_line, font=font_text)
+                width = bbox[0]
+                
+                if width <= max_width:
+                    current_line.append(word)
+                else:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = [word]
+            
+            if current_line:
+                lines.append(' '.join(current_line))
+        
+        # Ограничиваем 15 строками максимум
+        lines = lines[:15]
+        
+        # Вычисляем высоту
+        header_height = 100  # Аватарка + имя
+        text_height = len(lines) * 26
+        footer_height = 80   # "just now" + иконки + отступы
+        padding = 50         # Верх и низ
+        
+        total_height = header_height + text_height + footer_height + padding
+        img_height = total_height
+        img_width = 600
+        
+        # Создаём изображение нужного размера
+        img = Image.new('RGB', (img_width, img_height), color='#15202b')
+        
+        # Твит фон
+        tweet_height = img_height - 50
+        tweet_box = Image.new('RGB', (560, tweet_height), color='white')
+        img.paste(tweet_box, (20, 25))
+        
+        draw = ImageDraw.Draw(img)
+        
+        # Аватарка
+        avatar_size = 48
+        avatar_x, avatar_y = 40, 45
+        
+        if avatar_path and os.path.exists(avatar_path):
+            try:
+                avatar_img = Image.open(avatar_path).convert('RGB')
+                avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+                
+                mask = Image.new('L', (avatar_size, avatar_size), 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse([0, 0, avatar_size, avatar_size], fill=255)
+                
+                img.paste(avatar_img, (avatar_x, avatar_y), mask)
+            except Exception as e:
+                logging.error(f"Avatar error: {e}")
+                draw.ellipse([avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size], fill='#1d9bf0')
+        else:
+            draw.ellipse([avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size], fill='#1d9bf0')
+        
+        # Имя и верификация
+        draw.text((100, 50), "Donald J. Trump", font=font_name, fill='#0f1419')
+        
+        check_x, check_y = 270, 52
+        draw.ellipse([check_x, check_y, check_x + 16, check_y + 16], fill='#1d9bf0')
+        draw.text((check_x + 3, check_y - 1), "✓", font=font_username, fill='white')
+        
+        draw.text((100, 72), "@realDonaldTrump", font=font_username, fill='#536471')
+        
+        # Текст с эмоджи
+        y_pos = 115
+        
+        with Pilmoji(img) as pilmoji:
+            for line in lines:
+                pilmoji.text((40, y_pos), line, font=font_text, fill='#0f1419')
+                y_pos += 26
+        
+        # Время
+        draw.text((40, y_pos + 20), "just now", font=font_username, fill='#536471')
+        
+        # Иконки внизу (динамическая позиция)
+        icons_y = img_height - 45
+        icon_color = '#536471'
+        icon_size = 18
+        
+        # Reply
+        x1 = 50
+        draw.ellipse([x1, icons_y, x1 + icon_size, icons_y + icon_size], outline=icon_color, width=2)
+        draw.polygon([(x1 + 3, icons_y + icon_size), (x1 + 3, icons_y + icon_size + 4), (x1 + 7, icons_y + icon_size)], fill=icon_color)
+        
+        # Retweet
+        x2 = 140
+        draw.line([(x2, icons_y + 6), (x2 + 14, icons_y + 6)], fill=icon_color, width=2)
+        draw.polygon([(x2 + 14, icons_y + 3), (x2 + 18, icons_y + 6), (x2 + 14, icons_y + 9)], fill=icon_color)
+        draw.line([(x2, icons_y + 12), (x2 + 14, icons_y + 12)], fill=icon_color, width=2)
+        draw.polygon([(x2, icons_y + 9), (x2 - 4, icons_y + 12), (x2, icons_y + 15)], fill=icon_color)
+        
+        # Like
+        x3 = 230
+        draw.ellipse([x3, icons_y + 2, x3 + 7, icons_y + 9], outline=icon_color, width=2)
+        draw.ellipse([x3 + 7, icons_y + 2, x3 + 14, icons_y + 9], outline=icon_color, width=2)
+        draw.polygon([(x3, icons_y + 7), (x3 + 14, icons_y + 7), (x3 + 7, icons_y + 16)], outline=icon_color, width=2)
+        
+        # Share
+        x4 = 320
+        draw.rectangle([x4 + 3, icons_y + 8, x4 + 13, icons_y + 16], outline=icon_color, width=2)
+        draw.line([(x4 + 8, icons_y + 8), (x4 + 8, icons_y + 2)], fill=icon_color, width=2)
+        draw.polygon([(x4 + 5, icons_y + 4), (x4 + 8, icons_y), (x4 + 11, icons_y + 4)], fill=icon_color)
+        
+        # Bookmark
+        x5 = 410
+        draw.rectangle([x5, icons_y + 2, x5 + 12, icons_y + 18], outline=icon_color, width=2)
+        draw.polygon([(x5, icons_y + 18), (x5 + 6, icons_y + 14), (x5 + 12, icons_y + 18)], fill=icon_color)
+        
+        # Сохраняем
+        img.save(output_path)
+        
+        logging.info(f"Trump tweet created: {img_width}x{img_height}, {len(lines)} lines")
+        return os.path.exists(output_path)
+        
+    except Exception as e:
+        logging.error(f"Tweet image error: {e}", exc_info=True)
         return False
 
 
@@ -560,6 +909,435 @@ def create_demotivator_video(vid_path, text, output_path):
 
 # ---------------- ХЕНДЛЕРЫ ----------------
 
+# === TENET FUNCTIONS ===
+
+def mirror_image(img_path: str, output_path: str) -> bool:
+    """Mirror an image horizontally."""
+    try:
+        img = Image.open(img_path)
+        mirrored = img.transpose(Image.FLIP_LEFT_RIGHT)
+        if mirrored.mode == "RGBA":
+            mirrored = mirrored.convert("RGB")
+        mirrored.save(output_path, "JPEG", quality=95)
+        logging.info(f"Mirrored image saved to {output_path}")
+        return True
+    except Exception as e:
+        logging.error(f"Mirror image error: {e}", exc_info=True)
+        return False
+
+
+def reverse_video(vid_path: str, output_path: str) -> bool:
+    """Reverse a video or GIF (play backwards)."""
+    try:
+        max_duration = 30
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", vid_path,
+            "-t", str(max_duration),
+            "-vf", "reverse",
+            "-af", "areverse",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            "-pix_fmt", "yuv420p",
+            output_path
+        ]
+        logging.info(f"Reversing video: {vid_path}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode != 0:
+            cmd_no_audio = [
+                "ffmpeg", "-y",
+                "-i", vid_path,
+                "-t", str(max_duration),
+                "-vf", "reverse",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "23",
+                "-an",
+                "-movflags", "+faststart",
+                "-pix_fmt", "yuv420p",
+                output_path
+            ]
+            result = subprocess.run(cmd_no_audio, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                logging.error(f"FFmpeg reverse error: {result.stderr}")
+                return False
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logging.info(f"Reversed video saved to {output_path}")
+            return True
+        return False
+    except subprocess.TimeoutExpired:
+        logging.error("Video reverse timeout")
+        return False
+    except Exception as e:
+        logging.error(f"Reverse video error: {e}", exc_info=True)
+        return False
+
+
+def reverse_text(text: str) -> str:
+    """Reverse text fully."""
+    return text[::-1]
+
+
+def reverse_audio(audio_path: str, output_path: str) -> bool:
+    """Reverse audio file."""
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", audio_path,
+            "-af", "areverse",
+            "-c:a", "libopus",
+            "-b:a", "64k",
+            output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            logging.error(f"Audio reverse error: {result.stderr}")
+            return False
+        return os.path.exists(output_path) and os.path.getsize(output_path) > 0
+    except Exception as e:
+        logging.error(f"Reverse audio error: {e}")
+        return False
+
+
+def reverse_pdf(pdf_path: str, output_path: str) -> bool:
+    """Reverse PDF page order."""
+    try:
+        from PyPDF2 import PdfReader, PdfWriter
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+        for page in reversed(reader.pages):
+            writer.add_page(page)
+        with open(output_path, "wb") as f:
+            writer.write(f)
+        logging.info(f"Reversed PDF: {len(reader.pages)} pages")
+        return True
+    except ImportError:
+        logging.error("PyPDF2 not installed")
+        return False
+    except Exception as e:
+        logging.error(f"PDF reverse error: {e}")
+        return False
+
+
+@dp.message(Command("tenet"))
+async def cmd_tenet(message: Message):
+    """Handle /tenet command - reverse media, text, audio, PDF."""
+    if not message.reply_to_message:
+        await message.reply(
+            "🔄 *Команда /tenet* — переворачивает всё!\n\n"
+            "Ответь на сообщение:\n"
+            "• 📝 Текст → ьтаробо|текст наоборот\n"
+            "• 🖼 Фото → зеркало\n"
+            "• 🎬 Видео/GIF → задом наперёд\n"
+            "• 🎤 Голосовое → реверс аудио\n"
+            "• 🎵 Аудио → реверс\n"
+            "• 📄 PDF → страницы в обратном порядке\n"
+            "• 📍 Локация → антипод (противоположная точка Земли)",
+            parse_mode="Markdown"
+        )
+        return
+
+    replied = message.reply_to_message
+    status_msg = await message.reply("⏳ Обрабатываем в стиле Тенет...")
+
+    input_file = f"temp_tenet_in_{message.message_id}"
+    output_file = f"temp_tenet_out_{message.message_id}"
+
+    try:
+        # === LOCATION (Antipode) ===
+        if replied.location:
+            lat = replied.location.latitude
+            lon = replied.location.longitude
+
+            # Calculate antipodal point (opposite side of Earth)
+            anti_lat = -lat
+            anti_lon = lon + 180 if lon <= 0 else lon - 180
+
+            await status_msg.edit_text(
+                f"🌍 Исходная точка: {lat:.6f}, {lon:.6f}\n"
+                f"🔄 Пробиваем Землю насквозь...\n"
+                f"🌏 Антипод: {anti_lat:.6f}, {anti_lon:.6f}"
+            )
+
+            await message.answer_location(latitude=anti_lat, longitude=anti_lon)
+            return
+
+        # === TEXT ===
+        elif replied.text:
+            reversed_text = reverse_text(replied.text)
+            await status_msg.edit_text(f"🔄 {reversed_text}")
+            return
+
+        # === PHOTO ===
+        elif replied.photo:
+            input_file += ".jpg"
+            output_file += ".jpg"
+            await bot.download(replied.photo[-1], destination=input_file)
+            await status_msg.edit_text("⏳ Зеркалим изображение...")
+            success = await run_in_thread(lambda: mirror_image(input_file, output_file))
+            if success:
+                await message.answer_photo(FSInputFile(output_file))
+            else:
+                await message.answer("Ошибка при зеркалировании")
+
+        # === VOICE ===
+        elif replied.voice:
+            input_file += ".ogg"
+            output_file += ".ogg"
+            await bot.download(replied.voice, destination=input_file)
+            await status_msg.edit_text("⏳ Переворачиваем голосовое...")
+            success = await run_in_thread(lambda: reverse_audio(input_file, output_file))
+            if success:
+                await message.answer_voice(FSInputFile(output_file))
+            else:
+                await message.answer("Ошибка при реверсе голосового")
+
+        # === AUDIO ===
+        elif replied.audio:
+            ext = ".mp3"
+            if replied.audio.file_name:
+                ext = os.path.splitext(replied.audio.file_name)[1] or ".mp3"
+            input_file += ext
+            output_file += ".ogg"
+            await bot.download(replied.audio, destination=input_file)
+            await status_msg.edit_text("⏳ Переворачиваем аудио...")
+            success = await run_in_thread(lambda: reverse_audio(input_file, output_file))
+            if success:
+                await message.answer_audio(FSInputFile(output_file), title="Reversed Audio")
+            else:
+                await message.answer("Ошибка при реверсе аудио")
+
+        # === DOCUMENT ===
+        elif replied.document:
+            mime = replied.document.mime_type or ""
+            fname = replied.document.file_name or "file"
+            
+            # PDF
+            if "pdf" in mime or fname.lower().endswith(".pdf"):
+                input_file += ".pdf"
+                output_file += ".pdf"
+                await bot.download(replied.document, destination=input_file)
+                await status_msg.edit_text("⏳ Переворачиваем страницы PDF...")
+                success = await run_in_thread(lambda: reverse_pdf(input_file, output_file))
+                if success:
+                    await message.answer_document(FSInputFile(output_file, filename="reversed.pdf"))
+                else:
+                    await message.answer("Ошибка при реверсе PDF (нужен PyPDF2)")
+            
+            # Image document
+            elif "image" in mime:
+                input_file += ".jpg"
+                output_file += ".jpg"
+                await bot.download(replied.document, destination=input_file)
+                await status_msg.edit_text("⏳ Зеркалим изображение...")
+                success = await run_in_thread(lambda: mirror_image(input_file, output_file))
+                if success:
+                    await message.answer_photo(FSInputFile(output_file))
+                else:
+                    await message.answer("Ошибка при зеркалировании")
+            
+            # Text file
+            elif "text" in mime or fname.endswith((".txt", ".md", ".json", ".xml", ".html", ".css", ".js", ".py")):
+                input_file += ".txt"
+                await bot.download(replied.document, destination=input_file)
+                with open(input_file, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                reversed_content = reverse_text(content)
+                if len(reversed_content) > 4000:
+                    output_file += ".txt"
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        f.write(reversed_content)
+                    await message.answer_document(FSInputFile(output_file, filename=f"reversed_{fname}"))
+                else:
+                    await message.answer(f"```\n{reversed_content[:4000]}\n```", parse_mode="Markdown")
+
+            # Video document
+            elif "video" in mime:
+                can_process, count = check_server_load()
+                if not can_process:
+                    await send_overload_message(message, count)
+                    return
+                input_file += ".mp4"
+                output_file += ".mp4"
+                await bot.download(replied.document, destination=input_file)
+                await status_msg.edit_text("⏳ Переворачиваем видео...")
+                success = await run_in_thread(lambda: reverse_video(input_file, output_file))
+                if success:
+                    await message.answer_video(FSInputFile(output_file))
+                else:
+                    await message.answer("Ошибка при реверсе видео")
+
+            else:
+                await message.answer(f"Не знаю как перевернуть этот тип файла: {mime}")
+
+        # === VIDEO ===
+        elif replied.video:
+            can_process, count = check_server_load()
+            if not can_process:
+                await send_overload_message(message, count)
+                return
+            input_file += ".mp4"
+            output_file += ".mp4"
+            await bot.download(replied.video, destination=input_file)
+            await status_msg.edit_text("⏳ Переворачиваем время...")
+            success = await run_in_thread(lambda: reverse_video(input_file, output_file))
+            if success:
+                await message.answer_video(FSInputFile(output_file))
+            else:
+                await message.answer("Ошибка при реверсе видео")
+
+        # === ANIMATION (GIF) ===
+        elif replied.animation:
+            can_process, count = check_server_load()
+            if not can_process:
+                await send_overload_message(message, count)
+                return
+            input_file += ".mp4"
+            output_file += ".mp4"
+            await bot.download(replied.animation, destination=input_file)
+            await status_msg.edit_text("⏳ Переворачиваем GIF...")
+            success = await run_in_thread(lambda: reverse_video(input_file, output_file))
+            if success:
+                await message.answer_animation(FSInputFile(output_file))
+            else:
+                await message.answer("Ошибка при реверсе GIF")
+
+        # === VIDEO NOTE ===
+        elif replied.video_note:
+            can_process, count = check_server_load()
+            if not can_process:
+                await send_overload_message(message, count)
+                return
+            input_file += ".mp4"
+            output_file += ".mp4"
+            await bot.download(replied.video_note, destination=input_file)
+            await status_msg.edit_text("⏳ Переворачиваем кружок...")
+            success = await run_in_thread(lambda: reverse_video(input_file, output_file))
+            if success:
+                await message.answer_animation(FSInputFile(output_file))
+            else:
+                await message.answer("Ошибка при реверсе видео")
+
+        # === STICKER ===
+        elif replied.sticker:
+            file_info = await bot.get_file(replied.sticker.file_id)
+            file_path = file_info.file_path
+            
+            if file_path and file_path.endswith(".webm"):
+                can_process, count = check_server_load()
+                if not can_process:
+                    await send_overload_message(message, count)
+                    return
+                input_file += ".webm"
+                output_file += ".mp4"
+                await bot.download(replied.sticker, destination=input_file)
+                await status_msg.edit_text("⏳ Переворачиваем видео-стикер...")
+                success = await run_in_thread(lambda: reverse_video(input_file, output_file))
+                if success:
+                    await message.answer_animation(FSInputFile(output_file))
+                else:
+                    await message.answer("Ошибка при реверсе стикера")
+            elif file_path and (file_path.endswith(".webp") or file_path.endswith(".png")):
+                input_file += ".webp"
+                output_file += ".jpg"
+                await bot.download(replied.sticker, destination=input_file)
+                await status_msg.edit_text("⏳ Зеркалим стикер...")
+                success = await run_in_thread(lambda: mirror_image(input_file, output_file))
+                if success:
+                    await message.answer_photo(FSInputFile(output_file))
+                else:
+                    await message.answer("Ошибка при зеркалировании стикера")
+            elif file_path and file_path.endswith(".tgs"):
+                await message.answer("TGS стикеры пока не поддерживаются для /tenet")
+            else:
+                await message.answer("Неизвестный тип стикера")
+
+        else:
+            await message.answer("Не могу обработать этот тип сообщения")
+
+    except Exception as e:
+        logging.error(f"Tenet command error: {e}", exc_info=True)
+        await message.answer("Произошла ошибка при обработке")
+    finally:
+        try:
+            await status_msg.delete()
+        except:
+            pass
+        for f in [input_file, output_file]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except:
+                    pass
+
+# === END TENET ===
+@dp.message(Command("trump", "трамп"))
+async def cmd_trump(message: Message):
+    """Переписать текст в стиле Трампа с картинкой"""
+    
+    # Из реплая
+    if message.reply_to_message:
+        original = message.reply_to_message.text or message.reply_to_message.caption
+        if not original:
+            await message.answer("Нет текста для трампификации")
+            return
+        user_id = message.reply_to_message.from_user.id
+    # Из текста команды
+    else:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            await message.answer("Использование:\n/trump текст\nили ответь на сообщение")
+            return
+        original = parts[1]
+        user_id = message.from_user.id
+    
+    status_msg = await message.reply("⏳ MAKING AMERICA GREAT AGAIN...")
+    
+    output_path = f"/root/bots/trump_tweet_{message.message_id}.png"
+    avatar_path = f"/root/bots/trump_avatar_{message.message_id}.jpg"
+    
+    try:
+        # Трампифицируем текст
+        trumpified = await run_in_thread(lambda: trumpify_text(original))
+        
+        # Скачиваем аватарку
+        await download_user_avatar(user_id, avatar_path)
+        
+        # Создаём картинку
+        if await run_in_thread(lambda: create_trump_tweet_image(trumpified, output_path, avatar_path)):
+            await message.answer_photo(
+                FSInputFile(output_path),
+                caption="🇺🇸 **TRUMP MODE ACTIVATED** 🇺🇸"
+            )
+        else:
+            # Fallback на текст
+            await message.answer(f"🇺🇸 **TRUMP MODE ACTIVATED** 🇺🇸\n\n{trumpified}")
+        
+    except Exception as e:
+        logging.error(f"Trump command error: {e}", exc_info=True)
+        await message.answer("FAKE NEWS! Ошибка трампификации 🇺🇸")
+    
+    finally:
+        try:
+            await status_msg.delete()
+        except:
+            pass
+        
+        # Очистка
+        for f in [output_path, avatar_path]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except:
+                    pass
+
+
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     help_text = """
@@ -604,17 +1382,89 @@ async def get_random_fallback_image(message_id: int) -> str:
             "sp70cc950ed11089c18703860f5419aa27_by_stckrRobot",
             "sp5e6aec1cfbfc458c3166a9bbb80e4bf2_by_stckrRobot",
             "sp40ba02f59a1bd3f647b89178bf001829_by_stckrRobot",
-            # Добавь ещё паки если нужно
+            "JowFaderMitch_by_fStikBot",
+            "pa_PzVnv4JOlkayQOj8W8LQ_by_SigStick20Bot",
+            "OninationSquadAnimStickers",
+            "PerdunMorjopa_by_fStikBot",
+            "vDfCbyQ_by_achestickbot",
+            "woodcum",
+            "ShooBeDoo",
+            "pchellovod85434_by_sportsmem_bot",
+            "pchellovod7569_by_sportsmem_bot",
+            "l8da2e0PmqVX0fArOJ7A5vlCc_by_literalmebot",
+            "vdyrky",
+            "pchellovod78493_by_sportsmem_bot",
+            "f_weyjrjak_896383854_by_fStikBot",
+            "pchellovod84489_by_Kinopoisk_Memes_bot",
+            "Hiroon_RafGrassetti",
+            "with_love_for_680300712_by_msu_hub_bot",
+            "with_love_for_1001414584186_by_msu_hub_bot",
+            "dedobemebykot",
+            "igorvikhorkov_by_fStikBot",
+            "horsestikerisfiu_by_fStikBot",
+            "with_love_for_1001615989157_by_msu_hub_bot",
+            "peepee_poopoo",
+            "Miss_evidence",
+            "set_2900_by_makestick3_bot",
+            "GamingYarAnimated",
+            "Fortrach",
+            "mihalpalich",
+            "tapok2",
+            "airplanshaha",
+            "GospodJesus",
+            "bttvAni",
+            "Harry_Potter_stickers",
+            "gifki",
+            "skzkz",
+            "Eto_golub_eeZee",
+            "BoysClub",
+            "anegen_2",
+            "electroeditions",
+            "NonameR",
+            "tashkent_stickers",
+            "KAZINO",
+            "uktambek",
+            "ChineseCubes",
+            "BEPHO",
+            "ButlerOstin",
+            "Mosamapack",
+            "Moral_condemnation",
+            "als_ohuenny",
+            "Stickers_ebat",
+            "RESTORENATURALORDER",
+            "blobbyyyy",
+            "VitaminParty",
+            "pollitrovaya",
+            "LMTBZH_people",
+            "sp760f8c50d2ff59b6231022bcb81e1e66_by_stckrRobot",
+            "IgorIvanovich_by_fStikBot",
+            "blyaskolko",
+            "f_ws1afq2_1216979815_by_fStikBot",
+            "modern2",
+            "Rudiemoji",
+            "AtiltDitalMasus_by_fStikBot",
+            "kulhaker_salt",
+            "peepee_poopoo",
+            "ozero",
+            "stkrchat",
+            "putinsmoney",
+            "daEntoOn",
+            "PBaas",
+            "best_ecosystem",
+            "Yellowboi",
+            "vsrpron",
+            "set_2900_by_makestick3_bot",
+            "ultrarjombav2",
         ]
         
-        # С вероятностью 30% берём 123.png, иначе стикер
-        if random.random() < 0.3 and os.path.exists(FALLBACK_AVATAR):
+        # С вероятностью 2% берём 123.png, иначе стикер
+        if random.random() < 0.02 and os.path.exists(FALLBACK_AVATAR):
             output_file = f"temp_fallback_{message_id}.png"
             copy2(FALLBACK_AVATAR, output_file)
             logging.info("Using 123.png as fallback")
             return output_file
         
-        # Выбираем случайный пак
+        # Выбираем случайный пак (БЕЗ КЕША)
         pack_name = random.choice(sticker_packs)
         logging.info(f"Getting random sticker from pack: {pack_name}")
         
@@ -629,24 +1479,27 @@ async def get_random_fallback_image(message_id: int) -> str:
                 return output_file
             return None
         
-        # Выбираем случайный стикер (только статичные, не видео)
-        static_stickers = [s for s in sticker_set.stickers if not s.is_video and not s.is_animated]
+        # Берём ЛЮБОЙ стикер (включая анимированные и видео)
+        sticker = random.choice(sticker_set.stickers)
+        logging.info(f"Selected sticker: animated={sticker.is_animated}, video={sticker.is_video}")
         
-        if not static_stickers:
-            logging.warning("No static stickers in pack, using 123.png")
-            if os.path.exists(FALLBACK_AVATAR):
-                output_file = f"temp_fallback_{message_id}.png"
-                copy2(FALLBACK_AVATAR, output_file)
-                return output_file
-            return None
+        # Определяем расширение
+        if sticker.is_animated:
+            # TGS стикеры - пока берём превью
+            if sticker.thumbnail:
+                output_file = f"temp_fallback_{message_id}.jpg"
+                await bot.download(sticker.thumbnail, destination=output_file)
+            else:
+                # Нет превью - берём другой
+                return await get_random_fallback_image(message_id)
+        elif sticker.is_video:
+            output_file = f"temp_fallback_{message_id}.webm"
+            await bot.download(sticker, destination=output_file)
+        else:
+            output_file = f"temp_fallback_{message_id}.webp"
+            await bot.download(sticker, destination=output_file)
         
-        sticker = random.choice(static_stickers)
-        
-        # Скачиваем стикер
-        output_file = f"temp_fallback_{message_id}.webp"
-        await bot.download(sticker, destination=output_file)
-        
-        logging.info(f"Downloaded random sticker: {sticker.file_id[:20]}...")
+        logging.info(f"Downloaded sticker: {output_file}")
         return output_file
         
     except Exception as e:
@@ -742,14 +1595,23 @@ async def handle_media_with_caption(message: Message):
     """Обработка картинок/документов с командой в подписи"""
     caption = message.caption or ""
     
-    # Проверяем есть ли команда в начале подписи
     cmd_prefixes = ("/d ", "/dd ", "/д ", "/дд ", "/inv ", "/vin ")
     cmd_list = ["/d", "/dd", "/д", "/дд", "/inv", "/vin"]
     
     is_cmd = caption.lower().startswith(tuple(cmd_prefixes)) or caption.lower() in cmd_list
     
     if not is_cmd:
-        return  # Игнорируем если нет команды
+        return
+    
+    # === ДОБАВЬ ПРОВЕРКУ НАГРУЗКИ ===
+    can_process, process_count = check_server_load()
+    if not can_process:
+        logging.warning(f"Server overloaded ({process_count} processes), rejecting media from {message.from_user.id}")
+        await send_overload_message(message, process_count)
+        return
+    # === КОНЕЦ ПРОВЕРКИ ===
+
+        
     
     logging.info(f"Media with command caption: {caption[:50]}")
     
@@ -816,15 +1678,27 @@ async def handle_command(message: Message):
     is_cmd = txt.lower() in cmd_list or any(txt.lower().startswith(p) for p in cmd_prefixes)
     if not is_cmd:
         return
+
+    # === ДОБАВЬ ПРОВЕРКУ НАГРУЗКИ ===
+    can_process, process_count = check_server_load()
+    if not can_process:
+        logging.warning(f"Server overloaded ({process_count} processes), rejecting request from {message.from_user.id}")
+        await send_overload_message(message, process_count)
+        return
+    # === КОНЕЦ ПРОВЕРКИ ===
     
     # === ЗАМЕНИ ЭТУ ПРОВЕРКУ ===
     if not message.reply_to_message:
-        # Команда без реплая - делаем демотиватор из рандомного стикера
         logging.info("Command without reply - using random sticker")
         
-        # Извлекаем текст если есть
         parts = txt.split(maxsplit=1)
-        caption = parts[1] if len(parts) > 1 else "..."
+        
+        # Если текст не указан - генерируем AI
+        if len(parts) == 1:
+            caption = generate_demotivator_text()
+            logging.info(f"Using AI-generated caption: {caption}")
+        else:
+            caption = parts[1]
         
         # Определяем эффект
         effect = None
@@ -840,37 +1714,35 @@ async def handle_command(message: Message):
         
         try:
             # Получаем рандомный стикер (гарантированно стикер, не 123.png)
-            sticker_packs = [
-                "sp031fedcbc4e438a8984a76e28c81713d_by_stckrRobot",
-                # Добавь ещё паки
-            ]
+            fallback_file = await get_random_fallback_image(message.message_id)
             
-            pack_name = random.choice(sticker_packs)
-            sticker_set = await bot.get_sticker_set(pack_name)
-            
-            # Только статичные стикеры
-            static_stickers = [s for s in sticker_set.stickers if not s.is_video and not s.is_animated]
-            
-            if not static_stickers:
-                await message.answer("Не удалось найти стикеры")
+            if not fallback_file:
+                await message.answer("Не удалось получить стикер")
                 await status_msg.delete()
                 return
             
-            sticker = random.choice(static_stickers)
-            input_file += ".webp"
-            await bot.download(sticker, destination=input_file)
+            logging.info(f"Using fallback file: {fallback_file}")
             
-            logging.info(f"Using random sticker for solo command")
-            
-            # Создаём демотиватор
-            success = await run_in_thread(lambda: create_demotivator_image(
-                input_file, caption, output_file, is_avatar=True, effect=effect
-            ))
-            
-            if success:
-                await message.answer_photo(FSInputFile(output_file))
+            # Проверяем тип файла
+            if fallback_file.endswith('.webm'):
+                # Видео-стикер -> видео демотиватор
+                output_file = f"temp_out_{message.message_id}.mp4"
+                success = await run_in_thread(lambda: create_demotivator_video(
+                    fallback_file, caption, output_file
+                ))
+                if success:
+                    await message.answer_animation(FSInputFile(output_file))
+                else:
+                    await message.answer("Ошибка обработки")
             else:
-                await message.answer("Ошибка обработки")
+                # Статичный стикер -> фото демотиватор
+                success = await run_in_thread(lambda: create_demotivator_image(
+                    fallback_file, caption, output_file, is_avatar=True, effect=effect
+                ))
+                if success:
+                    await message.answer_photo(FSInputFile(output_file))
+                else:
+                    await message.answer("Ошибка обработки")
         
         except Exception as e:
             logging.error(f"Solo command error: {e}", exc_info=True)
@@ -882,12 +1754,21 @@ async def handle_command(message: Message):
             except:
                 pass
             
-            for f in [input_file, output_file]:
-                if os.path.exists(f):
+            # Cleanup - удаляем ВСЕ временные файлы
+            cleanup_patterns = [
+                f"temp_fallback_{message.message_id}*",
+                f"temp_in_{message.message_id}*",
+                f"temp_out_{message.message_id}*",
+            ]
+            
+            import glob
+            for pattern in cleanup_patterns:
+                for file_path in glob.glob(pattern):
                     try:
-                        os.remove(f)
-                    except:
-                        pass
+                        os.remove(file_path)
+                        logging.debug(f"Cleaned up: {file_path}")
+                    except Exception as e:
+                        logging.debug(f"Failed to cleanup {file_path}: {e}")
         
         return  # Выходим из функции
     
@@ -1127,6 +2008,7 @@ async def handle_command(message: Message):
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Bot with emoji support started!")
+    cleanup_old_temp_files()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
