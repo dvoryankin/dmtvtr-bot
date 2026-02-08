@@ -50,6 +50,12 @@ async def _is_admin(bot: Bot, *, chat_id: int, user_id: int) -> bool:
         return False
 
 
+def _truncate_title(title: str, *, limit: int = 16) -> str:
+    # Telegram custom admin titles are limited to 16 characters.
+    normalized = " ".join((title or "").split())
+    return normalized[:limit]
+
+
 async def _try_set_admin_title(
     bot: Bot,
     *,
@@ -66,7 +72,15 @@ async def _try_set_admin_title(
     except TelegramForbiddenError:
         return False, "боту нужны права администратора (can_promote_members), чтобы менять титулы"
     except TelegramBadRequest as e:
-        return False, f"не получилось: {e.message}"
+        msg = (e.message or "").strip()
+        if "not enough rights to change custom title of the user" in msg.lower():
+            return (
+                False,
+                "не хватает прав, чтобы менять admin title. Нужно: бот = админ в супергруппе + право "
+                "'Добавлять админов' (can_promote_members). Также Telegram даёт менять титулы только тем админам, "
+                "которых бот может редактировать (can_be_edited=true).",
+            )
+        return False, f"не получилось: {msg or type(e).__name__}"
     except TelegramAPIError as e:
         return False, f"ошибка Telegram API: {type(e).__name__}"
 
@@ -83,7 +97,7 @@ async def _sync_title_for_user(
         bot,
         chat_id=chat_id,
         user_id=user.id,
-        custom_title=profile.badge,
+        custom_title=_truncate_title(profile.badge),
     )
     return ok, err
 
@@ -159,14 +173,39 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
 async def cmd_title(message: Message, bot: Bot, ctx: AppContext) -> None:
     if not message.from_user:
         return
-    if message.chat.type not in {"group", "supergroup"}:
-        await message.answer("Эта команда работает в группе/супергруппе.")
+    if message.chat.type != "supergroup":
+        await message.answer("Титулы работают только в супергруппе.")
         return
     if not await _is_admin(bot, chat_id=message.chat.id, user_id=message.from_user.id):
         await message.answer("Только админы могут менять титулы.")
         return
 
     target = message.reply_to_message.from_user if (message.reply_to_message and message.reply_to_message.from_user) else message.from_user
+
+    # Preflight: check bot permissions and whether this admin is editable by the bot.
+    me = await bot.me()
+    my_cm = await bot.get_chat_member(message.chat.id, me.id)
+    if my_cm.status not in {"administrator", "creator"}:
+        await message.answer("❌ Бот должен быть админом, чтобы ставить титулы.")
+        return
+    if my_cm.status == "administrator" and not getattr(my_cm, "can_promote_members", False):
+        await message.answer("❌ Дай боту право 'Добавлять админов' (can_promote_members) и повтори.")
+        return
+
+    t_cm = await bot.get_chat_member(message.chat.id, target.id)
+    if t_cm.status == "creator":
+        await message.answer("❌ Нельзя менять титул создателя чата через бота.")
+        return
+    if t_cm.status != "administrator":
+        await message.answer("❌ Титул можно поставить только администратору.")
+        return
+    if not getattr(t_cm, "can_be_edited", False):
+        await message.answer(
+            "❌ Telegram не даёт боту менять титул этого админа (can_be_edited=false). "
+            "Нужно, чтобы админ был назначен через бота, либо ставь титул вручную."
+        )
+        return
+
     ok, err = await _sync_title_for_user(bot=bot, ctx=ctx, chat_id=message.chat.id, user=target)
     if ok:
         p = await ctx.rating.profile(user=target)
@@ -179,21 +218,37 @@ async def cmd_title(message: Message, bot: Bot, ctx: AppContext) -> None:
 async def cmd_sync_titles(message: Message, bot: Bot, ctx: AppContext) -> None:
     if not message.from_user:
         return
-    if message.chat.type not in {"group", "supergroup"}:
-        await message.answer("Эта команда работает в группе/супергруппе.")
+    if message.chat.type != "supergroup":
+        await message.answer("Титулы работают только в супергруппе.")
         return
     if not await _is_admin(bot, chat_id=message.chat.id, user_id=message.from_user.id):
         await message.answer("Только админы могут запускать синхронизацию титулов.")
         return
 
-    admins = await bot.get_chat_administrators(message.chat.id)
     me = await bot.me()
+    my_cm = await bot.get_chat_member(message.chat.id, me.id)
+    if my_cm.status not in {"administrator", "creator"}:
+        await message.answer("❌ Бот должен быть админом, чтобы менять титулы.")
+        return
+    if my_cm.status == "administrator" and not getattr(my_cm, "can_promote_members", False):
+        await message.answer("❌ Дай боту право 'Добавлять админов' (can_promote_members), иначе титулы не поменять.")
+        return
+
+    admins = await bot.get_chat_administrators(message.chat.id)
 
     ok_count = 0
+    skipped_creator = 0
+    skipped_not_editable = 0
     fail: list[str] = []
     for cm in admins:
         u = cm.user
         if u.is_bot and u.id == me.id:
+            continue
+        if cm.status == "creator":
+            skipped_creator += 1
+            continue
+        if cm.status == "administrator" and not getattr(cm, "can_be_edited", False):
+            skipped_not_editable += 1
             continue
 
         ok, err = await _sync_title_for_user(bot=bot, ctx=ctx, chat_id=message.chat.id, user=u)
@@ -204,6 +259,13 @@ async def cmd_sync_titles(message: Message, bot: Bot, ctx: AppContext) -> None:
                 fail.append(f"{u.id}: {err}")
 
     lines = [f"Готово. Обновлено титулов: {ok_count}."]
+    if skipped_creator:
+        lines.append(f"Пропущено (создатель): {skipped_creator}.")
+    if skipped_not_editable:
+        lines.append(
+            "Пропущено (Telegram не даёт боту менять титул этих админов, can_be_edited=false): "
+            f"{skipped_not_editable}."
+        )
     if fail:
         lines.append(f"Ошибок: {len(fail)} (первые 5):")
         for x in fail[:5]:
