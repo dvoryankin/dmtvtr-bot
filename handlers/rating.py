@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, User
 
 from app.context import AppContext
-from ratings.badges import BADGES
+from ratings.badges import BADGES, badge_for_rating
 
 
 router = Router(name="rating")
@@ -75,8 +75,12 @@ async def _try_set_admin_title(
     chat_id: int,
     user_id: int,
     custom_title: str,
+    fallback_title: str | None = None,
 ) -> tuple[bool, str | None]:
     """Try to set Telegram admin custom title; returns (ok, error_text)."""
+    custom_title = _truncate_title(custom_title)
+    fallback_title = _truncate_title(fallback_title) if fallback_title else None
+
     try:
         ok = await bot.set_chat_administrator_custom_title(
             chat_id=chat_id, user_id=user_id, custom_title=custom_title
@@ -86,6 +90,28 @@ async def _try_set_admin_title(
         return False, "боту нужны права администратора (can_promote_members), чтобы менять титулы"
     except TelegramBadRequest as e:
         msg = (e.message or "").strip()
+        if "ADMIN_RANK_EMOJI_NOT_ALLOWED" in msg.upper():
+            if fallback_title and fallback_title != custom_title:
+                try:
+                    ok = await bot.set_chat_administrator_custom_title(
+                        chat_id=chat_id, user_id=user_id, custom_title=fallback_title
+                    )
+                    return ok, None if ok else "Telegram вернул False"
+                except TelegramBadRequest as e2:
+                    msg2 = (e2.message or "").strip()
+                    return False, f"не получилось: {msg2 or type(e2).__name__}"
+                except TelegramForbiddenError:
+                    return (
+                        False,
+                        "боту нужны права администратора (can_promote_members), чтобы менять титулы",
+                    )
+                except TelegramAPIError:
+                    return False, "ошибка Telegram API при установке титула"
+            return (
+                False,
+                "Telegram запретил эмодзи в титуле. Поставь текстовый титул (без эмодзи) или используй /promote "
+                "и тогда бот будет ставить титулы без эмодзи автоматически.",
+            )
         if "not enough rights to change custom title of the user" in msg.lower():
             return (
                 False,
@@ -106,11 +132,13 @@ async def _sync_title_for_user(
     user: User,
 ) -> tuple[bool, str | None]:
     profile = await ctx.rating.profile(user=user)
+    badge = badge_for_rating(profile.rating)
     ok, err = await _try_set_admin_title(
         bot,
         chat_id=chat_id,
         user_id=user.id,
-        custom_title=_truncate_title(profile.badge),
+        custom_title=f"{badge.icon} {badge.name}",
+        fallback_title=badge.name,
     )
     return ok, err
 

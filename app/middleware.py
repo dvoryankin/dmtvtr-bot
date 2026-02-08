@@ -87,16 +87,26 @@ class ActivityRatingMiddleware(BaseMiddleware):
             return
 
         badge = badge_for_rating(int(new_rating))
-        custom_title = f"{badge.icon} {badge.name}"[:16]
+        title_with_emoji = f"{badge.icon} {badge.name}"[:16]
+        title_plain = f"{badge.name}"[:16]
 
         try:
             await bot.set_chat_administrator_custom_title(
                 chat_id=message.chat.id,
                 user_id=message.from_user.id,
-                custom_title=custom_title,
+                custom_title=title_with_emoji,
             )
         except (TelegramForbiddenError, TelegramBadRequest):
             # Missing permissions or not a supergroup/admin, etc. Ignore silently.
+            try:
+                # Some chats forbid emojis in admin titles.
+                await bot.set_chat_administrator_custom_title(
+                    chat_id=message.chat.id,
+                    user_id=message.from_user.id,
+                    custom_title=title_plain,
+                )
+            except Exception:
+                return
             return
         except TelegramAPIError:
             return
