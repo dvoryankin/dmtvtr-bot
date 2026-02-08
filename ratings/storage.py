@@ -180,3 +180,17 @@ class RatingStorage:
                 """,
                 (chat_id, user_id, ts),
             )
+
+    def list_chat_ids(self) -> list[int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT chat_id
+                FROM votes
+                UNION
+                SELECT DISTINCT chat_id
+                FROM activity
+                ORDER BY chat_id
+                """
+            ).fetchall()
+        return [int(r["chat_id"]) for r in rows]

@@ -44,6 +44,9 @@ class RatingService:
     def init_db(self) -> None:
         self._storage.init_db()
 
+    async def list_chat_ids(self) -> list[int]:
+        return await run_in_thread(self._storage.list_chat_ids)
+
     async def touch_user(self, user: User) -> None:
         await run_in_thread(
             self._storage.upsert_user,
