@@ -33,6 +33,7 @@ class Settings:
     activity_points_per_award: int
     activity_cooldown_seconds: int
     activity_min_chars: int
+    reply_plus_enabled: int
 
     font_paths: tuple[str, ...]
     unicode_font_paths: tuple[str, ...]
@@ -47,6 +48,7 @@ class Settings:
         activity_points_per_award = _env_int("ACTIVITY_POINTS_PER_AWARD", 0)
         activity_cooldown_seconds = _env_int("ACTIVITY_COOLDOWN_SECONDS", 15 * 60)
         activity_min_chars = _env_int("ACTIVITY_MIN_CHARS", 5)
+        reply_plus_enabled = _env_int("REPLY_PLUS_ENABLED", 1)
 
         rating_db_path = Path(os.getenv("RATING_DB_PATH", str(base_dir / "ratings.sqlite3")))
 
@@ -77,6 +79,7 @@ class Settings:
             activity_points_per_award=activity_points_per_award,
             activity_cooldown_seconds=activity_cooldown_seconds,
             activity_min_chars=activity_min_chars,
+            reply_plus_enabled=reply_plus_enabled,
             font_paths=font_paths,
             unicode_font_paths=unicode_font_paths,
         )

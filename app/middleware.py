@@ -5,10 +5,11 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import Message
+from aiogram.types import Message, ReactionTypeEmoji
 
 from app.context import AppContext
 from ratings.badges import badge_for_rating
+from ratings.praise import is_praise_reply_text
 
 
 class ContextMiddleware(BaseMiddleware):
@@ -74,6 +75,61 @@ class ActivityRatingMiddleware(BaseMiddleware):
         maybe_text = (message.text or message.caption or "").lstrip()
         if maybe_text.startswith("/"):
             return
+
+        # Reply praise (e.g. "класс", "нормс") => +1 to the replied user.
+        if self._ctx.settings.reply_plus_enabled:
+            try:
+                if (
+                    message.reply_to_message
+                    and message.reply_to_message.from_user
+                    and not message.reply_to_message.from_user.is_bot
+                    and is_praise_reply_text(maybe_text)
+                ):
+                    to_user = message.reply_to_message.from_user
+                    ok, _new_rating, _retry_after = await self._ctx.rating.vote_plus_one(
+                        chat_id=message.chat.id,
+                        from_user=message.from_user,
+                        to_user=to_user,
+                    )
+                    if ok:
+                        # Visual confirmation without chat spam (if reactions are enabled).
+                        bot: Bot | None = data.get("bot")
+                        if bot is not None:
+                            try:
+                                await bot.set_message_reaction(
+                                    chat_id=message.chat.id,
+                                    message_id=message.message_id,
+                                    reaction=[ReactionTypeEmoji(emoji="👍")],
+                                )
+                            except Exception:
+                                pass
+
+                        # Best-effort title sync for admins; ignore failures.
+                        if bot is not None:
+                            try:
+                                cm = await bot.get_chat_member(message.chat.id, to_user.id)
+                                if cm.status in {"administrator", "creator"}:
+                                    kpd = await self._ctx.rating.kpd_percent(user_id=to_user.id)
+                                    badge = badge_for_rating(int(_new_rating or 0), kpd_percent=kpd)
+                                    title_with_emoji = f"{badge.icon} {badge.name}"[:16]
+                                    title_plain = f"{badge.name}"[:16]
+                                    try:
+                                        await bot.set_chat_administrator_custom_title(
+                                            chat_id=message.chat.id,
+                                            user_id=to_user.id,
+                                            custom_title=title_with_emoji,
+                                        )
+                                    except (TelegramForbiddenError, TelegramBadRequest):
+                                        await bot.set_chat_administrator_custom_title(
+                                            chat_id=message.chat.id,
+                                            user_id=to_user.id,
+                                            custom_title=title_plain,
+                                        )
+                            except Exception:
+                                pass
+            except Exception:
+                # Never break updates because of reply-plus bookkeeping.
+                logging.exception("Reply-plus failed")
 
         # Text messages: avoid counting very short spam.
         if message.text and len(message.text.strip()) < self._ctx.settings.activity_min_chars:
