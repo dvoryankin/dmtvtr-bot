@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+venv/
+.venv/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+bot.log
+
+# Local tooling
+.claude/
+
+# Runtime artifacts
+temp_*
+*.sqlite3
+*.db
+
