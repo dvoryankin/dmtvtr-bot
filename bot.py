@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
 
 from app.context import AppContext
-from app.middleware import ContextMiddleware
+from app.middleware import ActivityRatingMiddleware, ContextMiddleware
 from config.config import Settings
 from demotivator.layout import LayoutConfig
 from handlers import all_routers
@@ -31,6 +31,8 @@ async def main() -> None:
     rating = RatingService(
         db_path=settings.rating_db_path,
         vote_cooldown_seconds=settings.vote_cooldown_seconds,
+        activity_points_per_award=settings.activity_points_per_award,
+        activity_cooldown_seconds=settings.activity_cooldown_seconds,
     )
     rating.init_db()
 
@@ -47,6 +49,7 @@ async def main() -> None:
     bot = Bot(token=settings.token)
     dp = Dispatcher()
     dp.update.middleware(ContextMiddleware(ctx=ctx))
+    dp.update.middleware(ActivityRatingMiddleware(ctx=ctx))
 
     for r in all_routers():
         dp.include_router(r)
@@ -59,4 +62,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

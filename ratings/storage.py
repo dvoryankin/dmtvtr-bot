@@ -56,6 +56,16 @@ class RatingStorage:
                 ON votes(chat_id, from_user_id, to_user_id, ts)
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS activity (
+                    chat_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    last_ts INTEGER NOT NULL,
+                    PRIMARY KEY(chat_id, user_id)
+                )
+                """
+            )
 
     def upsert_user(
         self,
@@ -150,3 +160,23 @@ class RatingStorage:
                 (chat_id, from_user_id, to_user_id, ts),
             )
 
+    def last_activity_ts(self, *, chat_id: int, user_id: int) -> int | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT last_ts FROM activity WHERE chat_id=? AND user_id=?",
+                (chat_id, user_id),
+            ).fetchone()
+            if not row:
+                return None
+            return int(row["last_ts"])
+
+    def record_activity(self, *, chat_id: int, user_id: int, ts: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO activity(chat_id, user_id, last_ts)
+                VALUES(?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET last_ts=excluded.last_ts
+                """,
+                (chat_id, user_id, ts),
+            )

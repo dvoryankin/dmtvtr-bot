@@ -28,9 +28,18 @@ def _display_name_from_row(row: UserRow) -> str:
 
 
 class RatingService:
-    def __init__(self, *, db_path: Path, vote_cooldown_seconds: int) -> None:
+    def __init__(
+        self,
+        *,
+        db_path: Path,
+        vote_cooldown_seconds: int,
+        activity_points_per_award: int,
+        activity_cooldown_seconds: int,
+    ) -> None:
         self._storage = RatingStorage(db_path=db_path)
         self._vote_cooldown_seconds = vote_cooldown_seconds
+        self._activity_points_per_award = activity_points_per_award
+        self._activity_cooldown_seconds = activity_cooldown_seconds
 
     def init_db(self) -> None:
         self._storage.init_db()
@@ -131,3 +140,50 @@ class RatingService:
         new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=1)
         return True, new_rating, None
 
+    async def can_award_activity(self, *, chat_id: int, user_id: int) -> tuple[bool, int]:
+        if self._activity_points_per_award <= 0:
+            return False, 0
+
+        now_ts = int(time.time())
+        last_ts = await run_in_thread(
+            self._storage.last_activity_ts,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        if last_ts is None:
+            return True, 0
+
+        elapsed = now_ts - last_ts
+        if elapsed >= self._activity_cooldown_seconds:
+            return True, 0
+        return False, self._activity_cooldown_seconds - elapsed
+
+    async def award_activity(self, *, chat_id: int, user: User) -> tuple[bool, int | None, int | None, bool]:
+        """Return (awarded, new_rating, retry_after_seconds, badge_changed)."""
+        if self._activity_points_per_award <= 0:
+            return False, None, None, False
+
+        await self.touch_user(user)
+        row = await run_in_thread(self._storage.get_user, user_id=user.id)
+        old_rating = row.rating if row else 0
+        old_badge = badge_for_rating(old_rating)
+
+        ok, retry_after = await self.can_award_activity(chat_id=chat_id, user_id=user.id)
+        if not ok:
+            return False, None, retry_after, False
+
+        now_ts = int(time.time())
+        await run_in_thread(
+            self._storage.record_activity,
+            chat_id=chat_id,
+            user_id=user.id,
+            ts=now_ts,
+        )
+        new_rating = await run_in_thread(
+            self._storage.add_points,
+            user_id=user.id,
+            delta=self._activity_points_per_award,
+        )
+        new_badge = badge_for_rating(new_rating)
+        badge_changed = (new_badge.threshold != old_badge.threshold)
+        return True, new_rating, None, badge_changed

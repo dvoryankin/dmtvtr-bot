@@ -30,6 +30,9 @@ class Settings:
 
     rating_db_path: Path
     vote_cooldown_seconds: int
+    activity_points_per_award: int
+    activity_cooldown_seconds: int
+    activity_min_chars: int
 
     font_paths: tuple[str, ...]
     unicode_font_paths: tuple[str, ...]
@@ -41,6 +44,9 @@ class Settings:
 
         max_concurrent_processes = _env_int("MAX_CONCURRENT_PROCESSES", 2)
         vote_cooldown_seconds = _env_int("VOTE_COOLDOWN_SECONDS", 12 * 60 * 60)
+        activity_points_per_award = _env_int("ACTIVITY_POINTS_PER_AWARD", 0)
+        activity_cooldown_seconds = _env_int("ACTIVITY_COOLDOWN_SECONDS", 15 * 60)
+        activity_min_chars = _env_int("ACTIVITY_MIN_CHARS", 5)
 
         rating_db_path = Path(os.getenv("RATING_DB_PATH", str(base_dir / "ratings.sqlite3")))
 
@@ -68,7 +74,9 @@ class Settings:
             max_concurrent_processes=max_concurrent_processes,
             rating_db_path=rating_db_path,
             vote_cooldown_seconds=vote_cooldown_seconds,
+            activity_points_per_award=activity_points_per_award,
+            activity_cooldown_seconds=activity_cooldown_seconds,
+            activity_min_chars=activity_min_chars,
             font_paths=font_paths,
             unicode_font_paths=unicode_font_paths,
         )
-
