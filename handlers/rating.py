@@ -50,6 +50,19 @@ async def _is_admin(bot: Bot, *, chat_id: int, user_id: int) -> bool:
         return False
 
 
+async def _can_promote(bot: Bot, *, chat_id: int, user_id: int) -> bool:
+    """Whether user can promote admins in this chat (creator or admin with can_promote_members)."""
+    try:
+        cm = await bot.get_chat_member(chat_id, user_id)
+        if cm.status == "creator":
+            return True
+        if cm.status != "administrator":
+            return False
+        return bool(getattr(cm, "can_promote_members", False))
+    except Exception:
+        return False
+
+
 def _truncate_title(title: str, *, limit: int = 16) -> str:
     # Telegram custom admin titles are limited to 16 characters.
     normalized = " ".join((title or "").split())
@@ -266,6 +279,10 @@ async def cmd_sync_titles(message: Message, bot: Bot, ctx: AppContext) -> None:
             "Пропущено (Telegram не даёт боту менять титул этих админов, can_be_edited=false): "
             f"{skipped_not_editable}."
         )
+        lines.append(
+            "Чтобы бот мог менять титулы, админов нужно назначить через бота: "
+            "сними админку вручную и выдай заново командой /promote (в ответ на сообщение)."
+        )
     if fail:
         lines.append(f"Ошибок: {len(fail)} (первые 5):")
         for x in fail[:5]:
@@ -314,5 +331,111 @@ async def cmd_award_badge(message: Message, bot: Bot, ctx: AppContext) -> None:
     else:
         await message.answer(
             f"✅ Рейтинг обновлён: {p_after.display_name} → {p_after.rating} ({p_after.badge})\n"
+            f"❌ Титул не обновился: {err}"
+        )
+
+
+@router.message(Command("promote", "промоут", "админ"))
+async def cmd_promote(message: Message, bot: Bot, ctx: AppContext) -> None:
+    """Promote a user to admin via the bot so it can later manage their custom title."""
+    if not message.from_user:
+        return
+    if message.chat.type != "supergroup":
+        await message.answer("Эта команда работает только в супергруппе.")
+        return
+    if not await _can_promote(bot, chat_id=message.chat.id, user_id=message.from_user.id):
+        await message.answer("Только создатель чата или админ с правом 'Добавлять админов' может запускать /promote.")
+        return
+
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        await message.answer(
+            "Ответь на сообщение человека: `/promote`.\n"
+            "Опционально: `/promote invite|mod|admin` (по умолчанию: invite).",
+            parse_mode="Markdown",
+        )
+        return
+
+    target = message.reply_to_message.from_user
+    if target.is_bot:
+        await message.answer("Ботов не промоутим.")
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    mode = (args[1].strip().lower() if len(args) > 1 else "invite")
+    if mode in {"минимум", "min"}:
+        mode = "invite"
+    if mode in {"мод", "moderator"}:
+        mode = "mod"
+    if mode in {"админ", "full"}:
+        mode = "admin"
+    if mode not in {"invite", "mod", "admin"}:
+        await message.answer(
+            "Не понял режим. Доступно: invite, mod, admin.\n"
+            "Пример: `/promote mod`",
+            parse_mode="Markdown",
+        )
+        return
+
+    # Preflight: bot permissions.
+    me = await bot.me()
+    my_cm = await bot.get_chat_member(message.chat.id, me.id)
+    if my_cm.status not in {"administrator", "creator"}:
+        await message.answer("❌ Бот должен быть админом, чтобы промоутить людей.")
+        return
+    if my_cm.status == "administrator" and not getattr(my_cm, "can_promote_members", False):
+        await message.answer("❌ Дай боту право 'Добавлять админов' (can_promote_members) и повтори.")
+        return
+
+    rights = {
+        "invite": dict(can_invite_users=True),
+        "mod": dict(
+            can_delete_messages=True,
+            can_restrict_members=True,
+            can_pin_messages=True,
+            can_invite_users=True,
+        ),
+        "admin": dict(
+            can_manage_chat=True,
+            can_change_info=True,
+            can_delete_messages=True,
+            can_restrict_members=True,
+            can_invite_users=True,
+            can_pin_messages=True,
+            can_manage_video_chats=True,
+        ),
+    }[mode]
+
+    try:
+        ok = await bot.promote_chat_member(
+            chat_id=message.chat.id,
+            user_id=target.id,
+            is_anonymous=False,
+            can_manage_chat=rights.get("can_manage_chat", False),
+            can_change_info=rights.get("can_change_info", False),
+            can_delete_messages=rights.get("can_delete_messages", False),
+            can_manage_video_chats=rights.get("can_manage_video_chats", False),
+            can_restrict_members=rights.get("can_restrict_members", False),
+            can_invite_users=rights.get("can_invite_users", False),
+            can_pin_messages=rights.get("can_pin_messages", False),
+            can_promote_members=False,
+        )
+    except TelegramBadRequest as e:
+        await message.answer(f"❌ Не получилось промоутить: {e.message}")
+        return
+    except TelegramAPIError as e:
+        await message.answer(f"❌ Ошибка Telegram API: {type(e).__name__}")
+        return
+
+    if not ok:
+        await message.answer("❌ Telegram вернул False при промоуте.")
+        return
+
+    ok_title, err = await _sync_title_for_user(bot=bot, ctx=ctx, chat_id=message.chat.id, user=target)
+    p = await ctx.rating.profile(user=target)
+    if ok_title:
+        await message.answer(f"✅ Промоут + титул: {p.display_name} → {p.badge}")
+    else:
+        await message.answer(
+            f"✅ Промоут выполнен: {p.display_name}\n"
             f"❌ Титул не обновился: {err}"
         )
