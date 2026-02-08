@@ -91,19 +91,26 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         from_user=message.from_user,
                         to_user=to_user,
                     )
-                    if ok:
-                        # Visual confirmation without chat spam (if reactions are enabled).
-                        bot: Bot | None = data.get("bot")
-                        if bot is not None:
-                            try:
-                                await bot.set_message_reaction(
-                                    chat_id=message.chat.id,
-                                    message_id=message.message_id,
-                                    reaction=[ReactionTypeEmoji(emoji="👍")],
-                                )
-                            except Exception:
-                                pass
+                    # Visual confirmation without chat spam (if reactions are enabled).
+                    bot: Bot | None = data.get("bot")
+                    if bot is not None:
+                        try:
+                            if ok:
+                                emoji = "👍"
+                            elif _retry_after is None:
+                                emoji = "🚫"  # self-vote
+                            else:
+                                emoji = "⏳"  # cooldown
 
+                            await bot.set_message_reaction(
+                                chat_id=message.chat.id,
+                                message_id=message.message_id,
+                                reaction=[ReactionTypeEmoji(emoji=emoji)],
+                            )
+                        except Exception:
+                            pass
+
+                    if ok:
                         # Best-effort title sync for admins; ignore failures.
                         if bot is not None:
                             try:
