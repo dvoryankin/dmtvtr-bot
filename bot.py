@@ -49,8 +49,8 @@ async def main() -> None:
     bot = Bot(token=settings.token)
     dp = Dispatcher()
     dp.update.middleware(ContextMiddleware(ctx=ctx))
-    # Activity and reply-based rating are message-level concerns, so attach to message observer.
-    dp.message.middleware(ActivityRatingMiddleware(ctx=ctx))
+    # Activity and reply-based rating should run for *all* messages, even when no handler matches.
+    dp.message.outer_middleware(ActivityRatingMiddleware(ctx=ctx))
 
     for r in all_routers():
         dp.include_router(r)
