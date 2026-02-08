@@ -9,7 +9,7 @@ from utils.fonts import get_font, get_unicode_font
 from utils.text import fit_text, has_emoji
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class LayoutConfig:
     font_paths: tuple[str, ...]
     unicode_font_paths: tuple[str, ...]
@@ -83,4 +83,3 @@ def build_layout_params(
             y_text += font_size + 10
 
     return canvas, target_w, target_h, pad_side, pad_top
-

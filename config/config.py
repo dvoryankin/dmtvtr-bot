@@ -15,7 +15,7 @@ def _env_int(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an int, got: {raw!r}") from e
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Settings:
     token: str
     groq_api_key: str

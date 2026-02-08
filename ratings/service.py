@@ -11,7 +11,7 @@ from ratings.storage import RatingStorage, UserRow
 from utils.asyncio_utils import run_in_thread
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Profile:
     user_id: int
     display_name: str

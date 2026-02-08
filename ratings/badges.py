@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Badge:
     threshold: int
     name: str
@@ -36,4 +36,3 @@ def next_badge(rating: int) -> Badge | None:
         if rating < b.threshold:
             return b
     return None
-

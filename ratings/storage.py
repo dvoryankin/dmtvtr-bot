@@ -6,7 +6,7 @@ import sqlite3
 import time
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class UserRow:
     user_id: int
     username: str | None
