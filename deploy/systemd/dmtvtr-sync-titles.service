@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync Telegram admin titles from rating badges (dmtvtr_bot)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/root/bots
+ExecStart=/root/bots/venv/bin/python -m scripts.sync_titles
+Environment=PYTHONUNBUFFERED=1
+

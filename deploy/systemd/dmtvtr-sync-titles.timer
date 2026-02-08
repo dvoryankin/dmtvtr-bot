@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily sync of Telegram admin titles at 05:00 (dmtvtr_bot)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+
