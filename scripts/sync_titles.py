@@ -131,7 +131,7 @@ async def _sync_chat_titles(
             fail_count += 1
             continue
 
-        badge = badge_for_rating(p.rating)
+        badge = badge_for_rating(p.rating, kpd_percent=p.kpd_percent)
         ok, err = await _set_admin_title(
             bot,
             chat_id=chat_id,
@@ -198,4 +198,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

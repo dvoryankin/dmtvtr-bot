@@ -24,10 +24,25 @@ def _format_seconds(seconds: int) -> str:
 
 
 def _badges_help() -> str:
-    lines = ["Доступные лычки (по рейтингу):"]
-    for b in BADGES:
-        lines.append(f"- {b.icon} {b.name}: {b.threshold}+")
-    return "\n".join(lines)
+    return (
+        "Звания (как в Ответах Mail.ru):\n"
+        "- Новичок: <1\n"
+        "- Ученик: 1–249\n"
+        "- Знаток: 250–499\n"
+        "- Профи: 500–999\n"
+        "- Мастер: 1000–2499\n"
+        "- Гуру: 2500–4999\n"
+        "- Мыслитель: 5000–9999\n"
+        "- Мудрец: 10000–19999\n"
+        "- Просветленный: 20000–49999\n"
+        "- 50000–99999:\n"
+        "  - Гений (КПД >= 25%)\n"
+        "  - Оракул (КПД < 25%)\n"
+        "- 100000+:\n"
+        "  - Высший разум (КПД >= 30%)\n"
+        "  - Искусственный интеллект (КПД < 30%)\n\n"
+        "КПД в боте = получено / (получено + поставлено) * 100% (по /plus)."
+    )
 
 
 def _normalize_name(name: str) -> str:
@@ -132,7 +147,7 @@ async def _sync_title_for_user(
     user: User,
 ) -> tuple[bool, str | None]:
     profile = await ctx.rating.profile(user=user)
-    badge = badge_for_rating(profile.rating)
+    badge = badge_for_rating(profile.rating, kpd_percent=profile.kpd_percent)
     ok, err = await _try_set_admin_title(
         bot,
         chat_id=chat_id,
@@ -152,6 +167,7 @@ async def cmd_profile(message: Message, ctx: AppContext) -> None:
         f"Профиль: {p.display_name}",
         f"Рейтинг: {p.rating}",
         f"Лычка: {p.badge}",
+        f"КПД: {p.kpd_percent}%",
     ]
     if p.next_badge_hint:
         lines.append(p.next_badge_hint)

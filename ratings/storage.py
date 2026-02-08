@@ -58,6 +58,18 @@ class RatingStorage:
             )
             conn.execute(
                 """
+                CREATE INDEX IF NOT EXISTS idx_votes_from_user
+                ON votes(from_user_id)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_votes_to_user
+                ON votes(to_user_id)
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS activity (
                     chat_id INTEGER NOT NULL,
                     user_id INTEGER NOT NULL,
@@ -171,6 +183,19 @@ class RatingStorage:
                 "INSERT INTO votes(chat_id, from_user_id, to_user_id, ts) VALUES(?, ?, ?, ?)",
                 (chat_id, from_user_id, to_user_id, ts),
             )
+
+    def vote_counts(self, *, user_id: int) -> tuple[int, int]:
+        """Return (given, received) counts for /plus votes."""
+        with self._connect() as conn:
+            given = conn.execute(
+                "SELECT COUNT(1) AS c FROM votes WHERE from_user_id=?",
+                (user_id,),
+            ).fetchone()["c"]
+            received = conn.execute(
+                "SELECT COUNT(1) AS c FROM votes WHERE to_user_id=?",
+                (user_id,),
+            ).fetchone()["c"]
+            return int(given or 0), int(received or 0)
 
     def last_activity_ts(self, *, chat_id: int, user_id: int) -> int | None:
         with self._connect() as conn:

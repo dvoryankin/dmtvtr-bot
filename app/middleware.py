@@ -98,7 +98,8 @@ class ActivityRatingMiddleware(BaseMiddleware):
         except Exception:
             return
 
-        badge = badge_for_rating(int(new_rating))
+        kpd = await self._ctx.rating.kpd_percent(user_id=message.from_user.id)
+        badge = badge_for_rating(int(new_rating), kpd_percent=kpd)
         title_with_emoji = f"{badge.icon} {badge.name}"[:16]
         title_plain = f"{badge.name}"[:16]
 

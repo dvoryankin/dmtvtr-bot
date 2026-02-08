@@ -17,6 +17,7 @@ class Profile:
     display_name: str
     rating: int
     badge: str
+    kpd_percent: int
     next_badge_hint: str | None
 
 
@@ -76,12 +77,24 @@ class RatingService:
         await self.touch_user(user)
         return await run_in_thread(self._storage.add_points, user_id=user.id, delta=delta)
 
+    async def kpd_percent(self, *, user_id: int) -> int:
+        """A simplified КПД metric based on /plus votes only.
+
+        КПД = received / (received + given) * 100
+        """
+        given, received = await run_in_thread(self._storage.vote_counts, user_id=user_id)
+        total = given + received
+        if total <= 0:
+            return 0
+        return int(received * 100 / total)
+
     async def profile(self, *, user: User) -> Profile:
         await self.touch_user(user)
         row = await run_in_thread(self._storage.get_user, user_id=user.id)
         rating = row.rating if row else 0
 
-        badge = badge_for_rating(rating)
+        kpd = await self.kpd_percent(user_id=user.id)
+        badge = badge_for_rating(rating, kpd_percent=kpd)
         nxt = next_badge(rating)
         hint = None
         if nxt is not None:
@@ -93,6 +106,7 @@ class RatingService:
             display_name=display_name,
             rating=rating,
             badge=f"{badge.icon} {badge.name}",
+            kpd_percent=kpd,
             next_badge_hint=hint,
         )
 
@@ -100,13 +114,15 @@ class RatingService:
         rows = await run_in_thread(self._storage.top, limit=limit)
         out: list[Profile] = []
         for r in rows:
-            b = badge_for_rating(r.rating)
+            kpd = await self.kpd_percent(user_id=r.user_id)
+            b = badge_for_rating(r.rating, kpd_percent=kpd)
             out.append(
                 Profile(
                     user_id=r.user_id,
                     display_name=_display_name_from_row(r),
                     rating=r.rating,
                     badge=f"{b.icon} {b.name}",
+                    kpd_percent=kpd,
                     next_badge_hint=None,
                 )
             )
