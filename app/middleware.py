@@ -85,6 +85,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     and not message.reply_to_message.from_user.is_bot
                     and is_praise_reply_text(maybe_text)
                 ):
+                    target_message_id = message.reply_to_message.message_id
                     to_user = message.reply_to_message.from_user
                     ok, _new_rating, _retry_after = await self._ctx.rating.vote_plus_one(
                         chat_id=message.chat.id,
@@ -97,14 +98,17 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         try:
                             if ok:
                                 emoji = "👍"
+                                react_to_message_id = target_message_id
                             elif _retry_after is None:
                                 emoji = "🚫"  # self-vote
+                                react_to_message_id = message.message_id
                             else:
                                 emoji = "⏳"  # cooldown
+                                react_to_message_id = message.message_id
 
                             await bot.set_message_reaction(
                                 chat_id=message.chat.id,
-                                message_id=message.message_id,
+                                message_id=react_to_message_id,
                                 reaction=[ReactionTypeEmoji(emoji=emoji)],
                             )
                         except Exception:
@@ -134,6 +138,9 @@ class ActivityRatingMiddleware(BaseMiddleware):
                                         )
                             except Exception:
                                 pass
+
+                    # Don't award activity points for praise replies (otherwise the voter gains rating too).
+                    return
             except Exception:
                 # Never break updates because of reply-plus bookkeeping.
                 logging.exception("Reply-plus failed")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 
 # Reply-to-message "praise" triggers that automatically award +1 reputation
 # (same rules/cooldown as /plus).
@@ -108,6 +110,15 @@ def normalize_praise_text(text: str) -> list[str]:
 
 def is_praise_reply_text(text: str) -> bool:
     """True if message text should count as a praise reply (+1)."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+
+    # Special case: "+" as a quick /plus replacement (reply must exist; checked elsewhere).
+    compact = "".join(raw.split())
+    if re.fullmatch(r"\+{1,3}(1)?", compact):
+        return True
+
     tokens = normalize_praise_text(text)
     if not tokens:
         return False
@@ -116,4 +127,3 @@ def is_praise_reply_text(text: str) -> bool:
     if any(t not in _ALLOWED_TOKENS for t in tokens):
         return False
     return any(t in _PRAISE_TOKENS for t in tokens)
-
