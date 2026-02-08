@@ -26,3 +26,8 @@ temp_*
 *.sqlite3
 *.db
 
+# Server-local assets
+123.png
+2.jpg
+3.png
+times.ttf
