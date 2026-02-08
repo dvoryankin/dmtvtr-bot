@@ -212,7 +212,13 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         if retry_after is None:
             await message.answer("Нельзя поставить /plus самому себе.")
         else:
-            await message.answer(f"Слишком часто. Попробуй через {_format_seconds(retry_after)}.")
+            target = f"@{to_user.username}" if to_user.username else to_user.full_name
+            await message.answer(
+                "Слишком часто: ты уже ставил /plus этому человеку в этом чате.\n"
+                f"Кому: {target}\n"
+                f"Повторить можно через {_format_seconds(retry_after)}.\n\n"
+                "Другие участники могут ставить /plus ему без этого ограничения."
+            )
         return
 
     profile = await ctx.rating.profile(user=to_user)
