@@ -32,6 +32,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
     def __init__(self, *, ctx: AppContext) -> None:
         super().__init__()
         self._ctx = ctx
+        self._seen_chats: set[int] = set()
 
     async def __call__(
         self,
@@ -57,6 +58,17 @@ class ActivityRatingMiddleware(BaseMiddleware):
             return
         if not message.from_user or message.from_user.is_bot:
             return
+
+        # Register the chat for scheduled maintenance jobs (sync titles, etc.).
+        chat_id = message.chat.id
+        if chat_id not in self._seen_chats:
+            await self._ctx.rating.touch_chat(
+                chat_id=chat_id,
+                chat_type=message.chat.type,
+                title=getattr(message.chat, "title", None),
+                username=getattr(message.chat, "username", None),
+            )
+            self._seen_chats.add(chat_id)
 
         # Ignore commands and command-like captions.
         maybe_text = (message.text or message.caption or "").lstrip()

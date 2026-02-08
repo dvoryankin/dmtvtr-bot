@@ -47,6 +47,22 @@ class RatingService:
     async def list_chat_ids(self) -> list[int]:
         return await run_in_thread(self._storage.list_chat_ids)
 
+    async def touch_chat(
+        self,
+        *,
+        chat_id: int,
+        chat_type: str | None,
+        title: str | None,
+        username: str | None,
+    ) -> None:
+        await run_in_thread(
+            self._storage.upsert_chat,
+            chat_id=chat_id,
+            chat_type=chat_type,
+            title=title,
+            username=username,
+        )
+
     async def touch_user(self, user: User) -> None:
         await run_in_thread(
             self._storage.upsert_user,

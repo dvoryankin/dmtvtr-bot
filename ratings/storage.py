@@ -66,6 +66,18 @@ class RatingStorage:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chats (
+                    chat_id INTEGER PRIMARY KEY,
+                    type TEXT,
+                    title TEXT,
+                    username TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
 
     def upsert_user(
         self,
@@ -181,8 +193,40 @@ class RatingStorage:
                 (chat_id, user_id, ts),
             )
 
+    def upsert_chat(
+        self,
+        *,
+        chat_id: int,
+        chat_type: str | None,
+        title: str | None,
+        username: str | None,
+        now_ts: int | None = None,
+    ) -> None:
+        now_ts = int(time.time()) if now_ts is None else now_ts
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO chats(chat_id, type, title, username, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    type=excluded.type,
+                    title=excluded.title,
+                    username=excluded.username,
+                    updated_at=excluded.updated_at
+                """,
+                (chat_id, chat_type, title, username, now_ts, now_ts),
+            )
+
     def list_chat_ids(self) -> list[int]:
         with self._connect() as conn:
+            try:
+                rows = conn.execute("SELECT chat_id FROM chats ORDER BY chat_id").fetchall()
+                if rows:
+                    return [int(r["chat_id"]) for r in rows]
+            except sqlite3.OperationalError:
+                # Older DB without the chats table.
+                rows = []
+
             rows = conn.execute(
                 """
                 SELECT DISTINCT chat_id
@@ -193,4 +237,4 @@ class RatingStorage:
                 ORDER BY chat_id
                 """
             ).fetchall()
-        return [int(r["chat_id"]) for r in rows]
+            return [int(r["chat_id"]) for r in rows]
