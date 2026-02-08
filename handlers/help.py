@@ -40,5 +40,6 @@ async def cmd_help(message: Message) -> None:
 /synctitles — синхронизировать титулы у всех админов
 /award Мыслитель — выдать лычку (поднять рейтинг до порога) ответом на сообщение
 /promote [invite|mod|admin] — выдать админку через бота (тогда бот сможет менять титул)
+/seedrep 1 249 — раздать стартовый рейтинг админам (только тем, у кого рейтинг = 0)
 """
     await message.answer(help_text, parse_mode="Markdown")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 
 from aiogram import Bot, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
@@ -377,6 +378,80 @@ async def cmd_award_badge(message: Message, bot: Bot, ctx: AppContext) -> None:
             f"✅ Рейтинг обновлён: {p_after.display_name} → {p_after.rating} ({p_after.badge})\n"
             f"❌ Титул не обновился: {err}"
         )
+
+
+@router.message(Command("seedrep", "seedrating", "рандомрепа", "рандомрейтинг"))
+async def cmd_seed_rep(message: Message, bot: Bot, ctx: AppContext) -> None:
+    """One-time helper: seed random starting rating for admins (only for users with 0 rating)."""
+    if not message.from_user:
+        return
+    if message.chat.type not in {"group", "supergroup"}:
+        await message.answer("Эта команда работает в группе/супергруппе.")
+        return
+    if not await _is_admin(bot, chat_id=message.chat.id, user_id=message.from_user.id):
+        await message.answer("Только админы могут раздавать стартовый рейтинг.")
+        return
+
+    # Defaults: first two ranks (Новичок/Ученик) => 1..249
+    min_rating = 1
+    max_rating = 249
+
+    args = (message.text or "").split()
+    if len(args) == 3:
+        try:
+            min_rating = int(args[1])
+            max_rating = int(args[2])
+        except ValueError:
+            await message.answer("Формат: `/seedrep 1 249` (два числа).", parse_mode="Markdown")
+            return
+
+    if min_rating < 0 or max_rating < 0 or min_rating > max_rating or max_rating > 249:
+        await message.answer("Диапазон должен быть 0..249 и min <= max. Пример: `/seedrep 1 249`.", parse_mode="Markdown")
+        return
+
+    admins = await bot.get_chat_administrators(message.chat.id)
+    me = await bot.me()
+
+    seeded = 0
+    skipped_nonzero = 0
+    failed = 0
+
+    for cm in admins:
+        u = cm.user
+        if u.is_bot:
+            continue
+        if u.id == me.id:
+            continue
+
+        try:
+            p = await ctx.rating.profile(user=u)
+            if p.rating != 0:
+                skipped_nonzero += 1
+                continue
+
+            target = random.randint(min_rating, max_rating)
+            if target <= 0:
+                # Keep Novichok if configured so.
+                skipped_nonzero += 1
+                continue
+
+            await ctx.rating.add_points(user=u, delta=target)
+            seeded += 1
+
+            # Try to sync title immediately (if possible).
+            if message.chat.type == "supergroup" and cm.status in {"administrator", "creator"}:
+                await _sync_title_for_user(bot=bot, ctx=ctx, chat_id=message.chat.id, user=u)
+        except Exception:
+            failed += 1
+
+    await message.answer(
+        "🎲 Стартовый рейтинг раздан.\n"
+        f"Выдано: {seeded}\n"
+        f"Пропущено (уже был рейтинг != 0): {skipped_nonzero}\n"
+        f"Ошибок: {failed}\n\n"
+        "Можно повторить: `/seedrep 1 249`",
+        parse_mode="Markdown",
+    )
 
 
 @router.message(Command("promote", "промоут", "админ"))
