@@ -22,7 +22,7 @@ bot.log
 .claude/
 
 # Runtime artifacts
-temp_*
+/temp_*
 *.sqlite3
 *.db
 
