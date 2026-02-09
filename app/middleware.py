@@ -76,23 +76,45 @@ class ActivityRatingMiddleware(BaseMiddleware):
         if maybe_text.startswith("/"):
             return
 
-        # Reply praise (e.g. "класс", "нормс") => +1 to the replied user.
+        # Reply praise (e.g. "класс", "нормс", "+") => +1 to the replied-to user.
         if self._ctx.settings.reply_plus_enabled:
             try:
+                is_reply = bool(message.reply_to_message and message.reply_to_message.from_user)
+                is_praise = is_praise_reply_text(maybe_text) if is_reply else False
+                logging.debug(
+                    "Reply-plus check: text=%r is_reply=%s is_praise=%s from=%s reply_author=%s",
+                    maybe_text,
+                    is_reply,
+                    is_praise,
+                    message.from_user.id,
+                    message.reply_to_message.from_user.id if is_reply else None,
+                )
                 if (
-                    message.reply_to_message
-                    and message.reply_to_message.from_user
+                    is_reply
                     and not message.reply_to_message.from_user.is_bot
-                    and is_praise_reply_text(maybe_text)
+                    and is_praise
                 ):
-                    target_message_id = message.reply_to_message.message_id
+                    # target = the ORIGINAL message (the one being praised).
+                    praised_msg_id = message.reply_to_message.message_id
                     to_user = message.reply_to_message.from_user
+                    logging.info(
+                        "Reply-plus: from=%s to=%s text=%r praised_msg=%s reply_msg=%s",
+                        message.from_user.id,
+                        to_user.id,
+                        maybe_text,
+                        praised_msg_id,
+                        message.message_id,
+                    )
                     ok, _new_rating, _retry_after = await self._ctx.rating.vote_plus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
                     )
-                    # Visual confirmation without chat spam (if reactions are enabled).
+                    logging.info(
+                        "Reply-plus result: ok=%s new_rating=%s retry=%s",
+                        ok, _new_rating, _retry_after,
+                    )
+                    # Visual confirmation: react on the PRAISED (original) message.
                     bot: Bot | None = data.get("bot")
                     if bot is not None:
                         try:
@@ -103,14 +125,17 @@ class ActivityRatingMiddleware(BaseMiddleware):
                             else:
                                 emoji = "⏳"  # cooldown
 
+                            logging.info(
+                                "Reply-plus reaction: emoji=%s on msg=%s (NOT on reply msg=%s)",
+                                emoji, praised_msg_id, message.message_id,
+                            )
                             await bot.set_message_reaction(
                                 chat_id=message.chat.id,
-                                # React to the praised message, not to the reply ("норм/класс/...").
-                                message_id=target_message_id,
+                                message_id=praised_msg_id,
                                 reaction=[ReactionTypeEmoji(emoji=emoji)],
                             )
                         except Exception:
-                            pass
+                            logging.exception("Reply-plus: failed to set reaction")
 
                     if ok:
                         # Best-effort title sync for admins; ignore failures.
