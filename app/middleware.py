@@ -52,10 +52,20 @@ class ActivityRatingMiddleware(BaseMiddleware):
 
     async def _after(self, event: Any, data: dict[str, Any]) -> None:
         if not isinstance(event, Message):
+            logging.info("ActivityMiddleware: event is %s, not Message — skip", type(event).__name__)
             return
 
         message: Message = event
+        logging.info(
+            "ActivityMiddleware: msg from=%s chat=%s type=%s text=%r reply=%s",
+            message.from_user.id if message.from_user else None,
+            message.chat.id,
+            message.chat.type,
+            (message.text or "")[:50],
+            bool(message.reply_to_message),
+        )
         if message.chat.type not in {"group", "supergroup"}:
+            logging.info("ActivityMiddleware: skip — chat type %s", message.chat.type)
             return
         if not message.from_user or message.from_user.is_bot:
             return
