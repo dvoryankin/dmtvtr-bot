@@ -98,17 +98,15 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         try:
                             if ok:
                                 emoji = "👍"
-                                react_to_message_id = target_message_id
                             elif _retry_after is None:
                                 emoji = "🚫"  # self-vote
-                                react_to_message_id = message.message_id
                             else:
                                 emoji = "⏳"  # cooldown
-                                react_to_message_id = message.message_id
 
                             await bot.set_message_reaction(
                                 chat_id=message.chat.id,
-                                message_id=react_to_message_id,
+                                # React to the praised message, not to the reply ("норм/класс/...").
+                                message_id=target_message_id,
                                 reaction=[ReactionTypeEmoji(emoji=emoji)],
                             )
                         except Exception:
