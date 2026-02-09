@@ -9,6 +9,14 @@ from app.context import AppContext
 
 router = Router(name="debug")
 
+def _format_seconds(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    if hours:
+        return f"{hours}ч {minutes}м"
+    return f"{minutes}м"
+
 
 @router.message(Command("privacy", "botinfo"))
 async def cmd_privacy(message: Message, bot: Bot, ctx: AppContext) -> None:
@@ -28,3 +36,21 @@ async def cmd_privacy(message: Message, bot: Bot, ctx: AppContext) -> None:
 
     await message.answer("\n".join(lines))
 
+
+@router.message(Command("limits", "cooldowns", "таймауты"))
+async def cmd_limits(message: Message, ctx: AppContext) -> None:
+    vote_cd = _format_seconds(ctx.settings.vote_cooldown_seconds)
+    lines = [
+        "Таймауты антиспама рейтинга:",
+        f"- /plus и похвала-реплаем (норм/класс/+): 1 раз в {vote_cd} на пару (ты → он) в этом чате",
+    ]
+
+    if ctx.settings.activity_points_per_award <= 0:
+        lines.append("- Рейтинг за активность: OFF")
+    else:
+        activity_cd = _format_seconds(ctx.settings.activity_cooldown_seconds)
+        lines.append(
+            f"- Рейтинг за активность: +{ctx.settings.activity_points_per_award} раз в {activity_cd} (min chars: {ctx.settings.activity_min_chars})"
+        )
+
+    await message.answer("\n".join(lines))

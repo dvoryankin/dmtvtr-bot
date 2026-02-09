@@ -175,14 +175,25 @@ async def cmd_profile(message: Message, ctx: AppContext) -> None:
     await message.answer("\n".join(lines))
 
 
-@router.message(Command("top", "leaderboard"))
+@router.message(Command("top", "leaderboard", "toprating", "toprep"))
 async def cmd_top(message: Message, ctx: AppContext) -> None:
-    top = await ctx.rating.top(limit=10)
+    limit = 10
+    parts = (message.text or "").split()
+    if len(parts) >= 2:
+        try:
+            limit = int(parts[1])
+        except ValueError:
+            await message.answer("Формат: /top [N], например /top 20")
+            return
+
+    limit = max(1, min(limit, 50))
+
+    top = await ctx.rating.top(limit=limit)
     if not top:
         await message.answer("Пока пусто. Начни пользоваться ботом или поставь кому-нибудь /plus.")
         return
 
-    lines = ["Топ рейтинга:"]
+    lines = [f"Топ рейтинга (топ {limit}):"]
     for i, p in enumerate(top, start=1):
         lines.append(f"{i}. {p.display_name} — {p.rating} ({p.badge})")
     await message.answer("\n".join(lines))
