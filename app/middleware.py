@@ -65,9 +65,16 @@ class ActivityRatingMiddleware(BaseMiddleware):
             bool(message.reply_to_message),
         )
         if message.chat.type not in {"group", "supergroup"}:
-            logging.info("ActivityMiddleware: skip — chat type %s", message.chat.type)
             return
-        if not message.from_user or message.from_user.is_bot:
+        if not message.from_user:
+            return
+
+        # GroupAnonymousBot (id=1087968824): admin posting anonymously.
+        # Allow them to give reply-plus, but skip activity rating (can't identify user).
+        _ANON_ADMIN_BOT_ID = 1087968824
+        is_anon_admin = message.from_user.is_bot and message.from_user.id == _ANON_ADMIN_BOT_ID
+        is_regular_bot = message.from_user.is_bot and not is_anon_admin
+        if is_regular_bot:
             return
 
         # Register the chat for scheduled maintenance jobs (sync titles, etc.).
@@ -177,6 +184,10 @@ class ActivityRatingMiddleware(BaseMiddleware):
             except Exception:
                 # Never break updates because of reply-plus bookkeeping.
                 logging.exception("Reply-plus failed")
+
+        # Anonymous admins: can't track identity, skip activity rating.
+        if is_anon_admin:
+            return
 
         # Text messages: avoid counting very short spam.
         if message.text and len(message.text.strip()) < self._ctx.settings.activity_min_chars:
