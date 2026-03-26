@@ -9,6 +9,7 @@ from handlers.help import router as help_router
 from handlers.rating import router as rating_router
 from handlers.tenet import router as tenet_router
 from handlers.trump import router as trump_router
+from handlers.link_fix import router as link_fix_router
 
 
 def all_routers() -> list[Router]:
@@ -19,6 +20,7 @@ def all_routers() -> list[Router]:
         rating_router,
         tenet_router,
         trump_router,
+        link_fix_router,
         help_router,
         demotivator_router,
     ]
