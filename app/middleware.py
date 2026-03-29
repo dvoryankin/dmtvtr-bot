@@ -9,7 +9,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 
 from app.context import AppContext
 from ratings.badges import badge_for_rating
-from ratings.praise import is_praise_reply_text
+from ratings.praise import is_negative_reply_text, is_praise_reply_text
 
 
 class ContextMiddleware(BaseMiddleware):
@@ -98,14 +98,53 @@ class ActivityRatingMiddleware(BaseMiddleware):
             try:
                 is_reply = bool(message.reply_to_message and message.reply_to_message.from_user)
                 is_praise = is_praise_reply_text(maybe_text) if is_reply else False
+                is_negative = is_negative_reply_text(maybe_text) if is_reply else False
                 logging.debug(
-                    "Reply-plus check: text=%r is_reply=%s is_praise=%s from=%s reply_author=%s",
+                    "Reply check: text=%r is_reply=%s is_praise=%s is_negative=%s from=%s reply_author=%s",
                     maybe_text,
                     is_reply,
                     is_praise,
+                    is_negative,
                     message.from_user.id,
                     message.reply_to_message.from_user.id if is_reply else None,
                 )
+
+                # Handle reply-minus (-1).
+                if (
+                    is_reply
+                    and not message.reply_to_message.from_user.is_bot
+                    and is_negative
+                ):
+                    praised_msg_id = message.reply_to_message.message_id
+                    to_user = message.reply_to_message.from_user
+                    logging.info(
+                        "Reply-minus: from=%s to=%s text=%r msg=%s",
+                        message.from_user.id, to_user.id, maybe_text, praised_msg_id,
+                    )
+                    ok, _new_rating, _retry_after = await self._ctx.rating.vote_minus_one(
+                        chat_id=message.chat.id,
+                        from_user=message.from_user,
+                        to_user=to_user,
+                    )
+                    logging.info("Reply-minus result: ok=%s new_rating=%s retry=%s", ok, _new_rating, _retry_after)
+                    bot: Bot | None = data.get("bot")
+                    if bot is not None:
+                        try:
+                            if ok:
+                                emoji = "👎"
+                            elif _retry_after is None:
+                                emoji = "🚫"
+                            else:
+                                emoji = "⏳"
+                            await bot.set_message_reaction(
+                                chat_id=message.chat.id,
+                                message_id=praised_msg_id,
+                                reaction=[ReactionTypeEmoji(emoji=emoji)],
+                            )
+                        except Exception:
+                            logging.exception("Reply-minus: failed to set reaction")
+                    return
+
                 if (
                     is_reply
                     and not message.reply_to_message.from_user.is_bot

@@ -175,6 +175,37 @@ class RatingService:
         new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=1)
         return True, new_rating, None
 
+    async def vote_minus_one(
+        self,
+        *,
+        chat_id: int,
+        from_user: User,
+        to_user: User,
+    ) -> tuple[bool, int | None, int | None]:
+        """Return (ok, new_rating, retry_after_seconds)."""
+        if from_user.id == to_user.id:
+            return False, None, None
+
+        ok, retry_after = await self.can_vote(
+            chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
+        )
+        if not ok:
+            return False, None, retry_after
+
+        await self.touch_user(from_user)
+        await self.touch_user(to_user)
+
+        now_ts = int(time.time())
+        await run_in_thread(
+            self._storage.record_vote,
+            chat_id=chat_id,
+            from_user_id=from_user.id,
+            to_user_id=to_user.id,
+            ts=now_ts,
+        )
+        new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-1)
+        return True, new_rating, None
+
     async def can_award_activity(self, *, chat_id: int, user_id: int) -> tuple[bool, int]:
         if self._activity_points_per_award <= 0:
             return False, 0

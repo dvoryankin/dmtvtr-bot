@@ -23,6 +23,30 @@ _INTENSIFIERS: set[str] = {
 
 
 _PRAISE_TOKENS: set[str] = {
+    # Confirmation / agreement words.
+    "точно",
+    "рил",
+    "перерил",
+    "внатуре",
+    "факт",
+    "правда",
+    "верно",
+    "согласен",
+    "согласна",
+    "базированно",
+    "базировано",
+    "база",
+    "истина",
+    "труъ",
+    "тру",
+    "плюс",
+    "плюсую",
+    "поддерживаю",
+    "подтверждаю",
+    "однозначно",
+    "стопроцентно",
+    "безусловно",
+    "абсолютно",
     # User requested (incl. common misspellings).
     "норм",
     "нормс",
@@ -123,7 +147,49 @@ _PRAISE_TOKENS: set[str] = {
 }
 
 
-_ALLOWED_TOKENS: set[str] = _PRAISE_TOKENS | _INTENSIFIERS
+_NEGATIVE_TOKENS: set[str] = {
+    # Direct negatives.
+    "минус",
+    "хуйня",
+    "хуета",
+    "говно",
+    "говнище",
+    "фигня",
+    "херня",
+    "отстой",
+    "дно",
+    "днище",
+    "кринж",
+    "кринжово",
+    "кринжатина",
+    "стремно",
+    "стремота",
+    "позор",
+    "позорище",
+    "зашквар",
+    "зашкварно",
+    "треш",
+    "трешак",
+    "бред",
+    "бредятина",
+    "фу",
+    "тупо",
+    "тупость",
+    "слабо",
+    "слабовато",
+    "ужас",
+    "ужасно",
+    "отвратительно",
+    "мусор",
+    "шлак",
+    "дерьмо",
+    "чушь",
+    "дичь",
+    "фейл",
+    "рофл",
+}
+
+_ALLOWED_TOKENS: set[str] = _PRAISE_TOKENS | _NEGATIVE_TOKENS | _INTENSIFIERS
 
 
 def _compress_runs(token: str, *, max_run: int = 2) -> str:
@@ -179,4 +245,26 @@ def is_praise_reply_text(text: str) -> bool:
         return False
     if any(t not in _ALLOWED_TOKENS for t in tokens):
         return False
-    return any(t in _PRAISE_TOKENS for t in tokens)
+    # Must have at least one praise token and NO negative tokens.
+    return any(t in _PRAISE_TOKENS for t in tokens) and not any(t in _NEGATIVE_TOKENS for t in tokens)
+
+
+def is_negative_reply_text(text: str) -> bool:
+    """True if message text should count as a negative reply (-1)."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+
+    # Special case: "-" as a quick minus.
+    compact = "".join(raw.split())
+    if re.fullmatch(r"-{1,3}(1)?", compact):
+        return True
+
+    tokens = normalize_praise_text(text)
+    if not tokens:
+        return False
+    if len(tokens) > 4:
+        return False
+    if any(t not in _ALLOWED_TOKENS for t in tokens):
+        return False
+    return any(t in _NEGATIVE_TOKENS for t in tokens) and not any(t in _PRAISE_TOKENS for t in tokens)
