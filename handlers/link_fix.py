@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import re
-import logging
 from aiogram import Router, F
 from aiogram.types import Message
-from aiogram.enums import ParseMode
 
 router = Router(name="link_fix")
 
@@ -26,6 +24,10 @@ _URL_RE = re.compile(
 )
 
 
+def _has_fixable_url(text: str | None) -> bool:
+    return bool(text and _URL_RE.search(text))
+
+
 def _fix_urls(text: str) -> list[str]:
     """Extract URLs and return their fixed versions (only those that changed)."""
     urls = _URL_RE.findall(text)
@@ -39,19 +41,15 @@ def _fix_urls(text: str) -> list[str]:
     return fixed
 
 
-@router.message(F.text)
+@router.message(F.text.func(_has_fixable_url))
 async def fix_links_in_text(message: Message) -> None:
-    if not message.text:
-        return
     fixed = _fix_urls(message.text)
     if fixed:
         await message.reply('\n'.join(fixed))
 
 
-@router.message(F.caption)
+@router.message(F.caption.func(_has_fixable_url))
 async def fix_links_in_caption(message: Message) -> None:
-    if not message.caption:
-        return
     fixed = _fix_urls(message.caption)
     if fixed:
         await message.reply('\n'.join(fixed))
