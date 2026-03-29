@@ -12,6 +12,15 @@ from ratings.badges import badge_for_rating
 from ratings.praise import is_negative_reply_text, is_praise_reply_text
 
 
+def _format_seconds(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    if hours:
+        return f"{hours}ч {minutes}м"
+    return f"{minutes}м"
+
+
 class ContextMiddleware(BaseMiddleware):
     def __init__(self, *, ctx: AppContext) -> None:
         super().__init__()
@@ -128,21 +137,27 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     )
                     logging.info("Reply-minus result: ok=%s new_rating=%s retry=%s", ok, _new_rating, _retry_after)
                     bot: Bot | None = data.get("bot")
-                    if bot is not None:
-                        try:
-                            if ok:
-                                emoji = "👎"
-                            elif _retry_after is None:
-                                emoji = "🤡"
-                            else:
-                                emoji = "🤔"
-                            await bot.set_message_reaction(
-                                chat_id=message.chat.id,
-                                message_id=praised_msg_id,
-                                reaction=[ReactionTypeEmoji(emoji=emoji)],
-                            )
-                        except Exception:
-                            logging.exception("Reply-minus: failed to set reaction")
+                    if ok:
+                        profile = await self._ctx.rating.profile(user=to_user)
+                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        await message.reply(f"-1 {target} → {_new_rating} ({profile.badge})")
+                        if bot is not None:
+                            try:
+                                await bot.set_message_reaction(
+                                    chat_id=message.chat.id,
+                                    message_id=praised_msg_id,
+                                    reaction=[ReactionTypeEmoji(emoji="👎")],
+                                )
+                            except Exception:
+                                pass
+                    elif _retry_after is None:
+                        await message.reply("Нельзя минусить самого себя.")
+                    else:
+                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        await message.reply(
+                            f"Кулдаун: повторить можно через {_format_seconds(_retry_after)}.\n"
+                            f"Кому: {target}"
+                        )
                     return
 
                 if (
@@ -170,28 +185,28 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         "Reply-plus result: ok=%s new_rating=%s retry=%s",
                         ok, _new_rating, _retry_after,
                     )
-                    # Visual confirmation: react on the PRAISED (original) message.
                     bot: Bot | None = data.get("bot")
-                    if bot is not None:
-                        try:
-                            if ok:
-                                emoji = "👍"
-                            elif _retry_after is None:
-                                emoji = "🤡"  # self-vote
-                            else:
-                                emoji = "🤔"  # cooldown
-
-                            logging.info(
-                                "Reply-plus reaction: emoji=%s on msg=%s (NOT on reply msg=%s)",
-                                emoji, praised_msg_id, message.message_id,
-                            )
-                            await bot.set_message_reaction(
-                                chat_id=message.chat.id,
-                                message_id=praised_msg_id,
-                                reaction=[ReactionTypeEmoji(emoji=emoji)],
-                            )
-                        except Exception:
-                            logging.exception("Reply-plus: failed to set reaction")
+                    if ok:
+                        profile = await self._ctx.rating.profile(user=to_user)
+                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        await message.reply(f"+1 {target} → {_new_rating} ({profile.badge})")
+                        if bot is not None:
+                            try:
+                                await bot.set_message_reaction(
+                                    chat_id=message.chat.id,
+                                    message_id=praised_msg_id,
+                                    reaction=[ReactionTypeEmoji(emoji="👍")],
+                                )
+                            except Exception:
+                                pass
+                    elif _retry_after is None:
+                        await message.reply("Нельзя плюсить самого себя.")
+                    else:
+                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        await message.reply(
+                            f"Кулдаун: повторить можно через {_format_seconds(_retry_after)}.\n"
+                            f"Кому: {target}"
+                        )
 
                     if ok:
                         # Best-effort title sync for admins; ignore failures.
