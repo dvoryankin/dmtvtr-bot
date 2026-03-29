@@ -133,9 +133,9 @@ class ActivityRatingMiddleware(BaseMiddleware):
                             if ok:
                                 emoji = "👎"
                             elif _retry_after is None:
-                                emoji = "🚫"
+                                emoji = "🤡"
                             else:
-                                emoji = "⏳"
+                                emoji = "🤔"
                             await bot.set_message_reaction(
                                 chat_id=message.chat.id,
                                 message_id=praised_msg_id,
@@ -177,9 +177,9 @@ class ActivityRatingMiddleware(BaseMiddleware):
                             if ok:
                                 emoji = "👍"
                             elif _retry_after is None:
-                                emoji = "🚫"  # self-vote
+                                emoji = "🤡"  # self-vote
                             else:
-                                emoji = "⏳"  # cooldown
+                                emoji = "🤔"  # cooldown
 
                             logging.info(
                                 "Reply-plus reaction: emoji=%s on msg=%s (NOT on reply msg=%s)",
