@@ -15,8 +15,7 @@ _WATCH_CHAT_ID = -1003681962162
 # {get_number: last_remaining_when_notified}
 _notified: dict[int, int] = {}
 
-NOTIFY_THRESHOLD = 100  # first notification
-REMIND_THRESHOLD = 15   # second reminder
+_THRESHOLDS = [100, 15, 5]  # notify at these remaining counts
 
 
 def is_beautiful(n: int) -> bool:
@@ -61,17 +60,14 @@ class GetNotifyMiddleware(BaseMiddleware):
 
         remaining = nxt - msg_id
 
-        # Notify at NOTIFY_THRESHOLD and REMIND_THRESHOLD
+        # Find which threshold we just crossed
         should_notify = False
-        if remaining <= REMIND_THRESHOLD:
-            prev = _notified.get(nxt)
-            if prev is None or prev > REMIND_THRESHOLD:
+        prev = _notified.get(nxt)
+        for t in _THRESHOLDS:
+            if remaining <= t and (prev is None or prev > t):
                 should_notify = True
                 _notified[nxt] = remaining
-        elif remaining <= NOTIFY_THRESHOLD:
-            if nxt not in _notified:
-                should_notify = True
-                _notified[nxt] = remaining
+                break
 
         if not should_notify:
             return result
