@@ -9,6 +9,7 @@ from aiogram import Bot, Dispatcher
 
 from app.context import AppContext
 from app.middleware import ActivityRatingMiddleware, ContextMiddleware
+from handlers.get_notify import GetNotifyMiddleware
 from config.config import Settings
 from demotivator.layout import LayoutConfig
 from handlers import all_routers
@@ -51,6 +52,7 @@ async def main() -> None:
     dp.update.middleware(ContextMiddleware(ctx=ctx))
     # Activity and reply-based rating should run for *all* messages, even when no handler matches.
     dp.message.outer_middleware(ActivityRatingMiddleware(ctx=ctx))
+    dp.message.outer_middleware(GetNotifyMiddleware())
 
     for r in all_routers():
         dp.include_router(r)
