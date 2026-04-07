@@ -357,6 +357,37 @@ async def cmd_stats(message: Message, ctx: AppContext) -> None:
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
+@router.message(Command(
+    "stats5", "stats10", "stats15", "stats20", "stats25", "stats30",
+    "stats50", "stats100",
+))
+async def cmd_stats_n(message: Message, ctx: AppContext) -> None:
+    if not message.from_user or not message.text:
+        return
+    cmd = message.text.strip().split()[0].lstrip("/").lower()
+    # Extract number from command like "stats10"
+    num_str = cmd.replace("stats", "")
+    try:
+        n = int(num_str)
+    except ValueError:
+        n = 10
+    n = max(1, min(n, 100))
+
+    users = await ctx.rating.get_all_users(chat_id=message.chat.id, limit=n)
+    if not users:
+        await message.answer("Нет юзеров.")
+        return
+
+    lines = [f"<b>📊 Топ-{n} рейтинг ({len(users)} чел.):</b>", ""]
+    for i, u in enumerate(users, 1):
+        lines.append(f"{i}. {u.display_name} — <b>{u.rating}</b> ({u.badge})")
+
+    text = "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+    await message.answer(text, parse_mode="HTML")
+
+
 @router.message(Command("users", "юзеры", "участники"))
 async def cmd_users(message: Message, ctx: AppContext) -> None:
     users = await ctx.rating.get_all_users(chat_id=message.chat.id, limit=50)
