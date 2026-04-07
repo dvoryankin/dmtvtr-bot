@@ -153,7 +153,8 @@ class RatingService:
         to_user: User,
     ) -> tuple[bool, int | None, int | None, int | None, bool]:
         """Return (ok, new_rating, retry_after_seconds, delta, was_reset)."""
-        if from_user.id == to_user.id:
+        is_pchellovod = (from_user.username or "").lower() == "pchellovod"
+        if from_user.id == to_user.id and not is_pchellovod:
             return False, None, None, None, False
 
         ok, retry_after = await self.can_vote(
@@ -163,7 +164,8 @@ class RatingService:
             return False, None, retry_after, None, False
 
         await self.touch_user(from_user)
-        await self.touch_user(to_user)
+        if from_user.id != to_user.id:
+            await self.touch_user(to_user)
 
         delta = random.randint(1, 1000) * random.choice((-1, 1))
         if (to_user.username or "").lower() == "pchellovod" and random.random() < 0.2:
@@ -187,7 +189,8 @@ class RatingService:
         to_user: User,
     ) -> tuple[bool, int | None, int | None, int | None, bool]:
         """Return (ok, new_rating, retry_after_seconds, delta, was_reset)."""
-        if from_user.id == to_user.id:
+        is_pchellovod = (from_user.username or "").lower() == "pchellovod"
+        if from_user.id == to_user.id and not is_pchellovod:
             return False, None, None, None, False
 
         ok, retry_after = await self.can_vote(
@@ -197,7 +200,8 @@ class RatingService:
             return False, None, retry_after, None, False
 
         await self.touch_user(from_user)
-        await self.touch_user(to_user)
+        if from_user.id != to_user.id:
+            await self.touch_user(to_user)
 
         delta = random.randint(1, 1000) * random.choice((-1, 1))
         if (to_user.username or "").lower() == "pchellovod" and random.random() < 0.2:
