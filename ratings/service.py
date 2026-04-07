@@ -1222,11 +1222,11 @@ class RatingService:
         crazy = self._check_crazy()
         has_extras = was_reset or crazy is not None or event_count > 0
 
-        # Pick one sticker pack randomly, or none
+        # Send one sticker every 5 votes
         send_sticker = False
         send_xuan = False
-        if has_extras:
-            if self._event_total % 10 < max(event_count, 1):
+        if self._stats["total_votes"] % 5 == 0:
+            if random.random() < 0.5:
                 send_xuan = True
             else:
                 send_sticker = True
