@@ -403,7 +403,8 @@ async def cmd_stats_n(message: Message, ctx: AppContext) -> None:
 
     lines = [f"<b>📊 Топ-{n} рейтинг ({len(users)} чел.):</b>", ""]
     for i, u in enumerate(users, 1):
-        lines.append(f"{i}. {u.display_name} — <b>{u.rating}</b> ({u.badge})")
+        name = u.display_name.lstrip("@")
+        lines.append(f"{i}. {name} — <b>{u.rating}</b> ({u.badge})")
 
     text = "\n".join(lines)
     if len(text) > 4000:
