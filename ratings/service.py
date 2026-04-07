@@ -242,10 +242,6 @@ class RatingService:
         to_user: User,
     ) -> tuple[bool, int | None, int | None, int | None, bool, str | None]:
         """Return (ok, new_rating, retry_after_seconds, delta, was_reset, crazy_text)."""
-        is_pchellovod = (from_user.username or "").lower() == "pchellovod"
-        if from_user.id == to_user.id and not is_pchellovod:
-            return False, None, None, None, False, None
-
         ok, retry_after = await self.can_vote(
             chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
         )
@@ -279,10 +275,6 @@ class RatingService:
         to_user: User,
     ) -> tuple[bool, int | None, int | None, int | None, bool, str | None]:
         """Return (ok, new_rating, retry_after_seconds, delta, was_reset, crazy_text)."""
-        is_pchellovod = (from_user.username or "").lower() == "pchellovod"
-        if from_user.id == to_user.id and not is_pchellovod:
-            return False, None, None, None, False, None
-
         ok, retry_after = await self.can_vote(
             chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
         )
