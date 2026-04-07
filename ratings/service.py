@@ -1187,6 +1187,729 @@ class RatingService:
             if qparts:
                 _ev("queue", f"🧍 <b>ОЧЕРЕДЬ!</b> Рейтинги по номерам: {', '.join(qparts[:5])}...")
 
+        # === 150 NEW WORLD EVENTS ===
+
+        # ANCIENT WORLD (1-15)
+        if not _full() and random.random() < 0.04:
+            top5 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=5)
+            if top5:
+                victim = random.choice(await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=1))
+                if victim:
+                    loss = abs(victim.rating) // 2
+                    await run_in_thread(self._storage.add_points, user_id=victim.user_id, delta=-loss)
+                    _ev("roman_senate", f"🏛️ <b>РИМСКИЙ СЕНАТ!</b> {_display_name_from_row(victim)} приговорён! -{loss}")
+
+        if not _full() and random.random() < 0.04:
+            fighters = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=2)
+            if len(fighters) == 2:
+                w, l = (fighters[0], fighters[1]) if random.random() < 0.5 else (fighters[1], fighters[0])
+                prize = abs(l.rating) // 2 if l.rating else 500
+                await run_in_thread(self._storage.add_points, user_id=w.user_id, delta=prize)
+                await run_in_thread(self._storage.add_points, user_id=l.user_id, delta=-prize)
+                _ev("gladiator", f"⚔️ <b>ГЛАДИАТОР!</b> {_display_name_from_row(w)} побеждает {_display_name_from_row(l)}! ±{prize}")
+
+        if not _full() and random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            bot1 = await run_in_thread(self._storage.get_bottom_users, chat_id=chat_id, limit=1)
+            if top1 and bot1 and top1[0].user_id != bot1[0].user_id:
+                await run_in_thread(self._storage.set_rating, user_id=bot1[0].user_id, rating=top1[0].rating)
+                _ev("cleopatra", f"🏺 <b>КЛЕОПАТРА!</b> {_display_name_from_row(bot1[0])} соблазняет трон! → {top1[0].rating}")
+
+        if not _full() and random.random() < 0.04:
+            rich = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in rich:
+                if u.rating > 3000:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=1000)
+                    cnt += 1
+            if cnt:
+                _ev("nero", f"🔥 <b>НЕРОН!</b> Рим горит! {cnt} юзеров с рейтингом > 3000 срезаны до 1000!")
+
+        if not _full() and random.random() < 0.05:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                zn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=delta * 10)
+                _ev("zeus", f"⚡ <b>ЗЕВС!</b> Молния поражает {_display_name_from_row(u)}! {delta*10:+d} → {zn}")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for i, u in enumerate(all_u):
+                d = 500 if i % 2 == 0 else -500
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=d)
+            _ev("poseidon", f"🌊 <b>ПОСЕЙДОН!</b> Волна: чётные +500, нечётные -500!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if 0 < u.rating < 100:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=0)
+                    cnt += 1
+            if cnt:
+                _ev("sparta", f"🏛️ <b>СПАРТА!</b> {cnt} слабых (рейтинг < 100) выброшены!")
+
+        if not _full() and random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1:
+                loss = top1[0].rating * 44 // 100
+                await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=-loss)
+                _ev("caesar", f"🗡️ <b>ЦЕЗАРЬ!</b> {_display_name_from_row(top1[0])} заколот в Сенате! -{loss}")
+
+        if not _full() and random.random() < 0.04:
+            top3 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=3)
+            for u in top3:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=776)
+            if top3:
+                _ev("olympics_ancient", f"🏺 <b>ОЛИМПИЙСКИЕ ИГРЫ!</b> Топ-3 получают +776!")
+
+        if not _full() and random.random() < 0.03:
+            victims = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=5)
+            for u in victims:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-(abs(u.rating) * 80 // 100))
+            if victims:
+                _ev("vesuvius", f"🌋 <b>ВЕЗУВИЙ!</b> {len(victims)} юзеров потеряли 80%!")
+
+        # MEDIEVAL (16-30)
+        if not _full() and random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=30)
+            cnt = 0
+            for u in all_u:
+                if u.rating > 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=300)
+                    cnt += 1
+            if cnt:
+                _ev("crusade", f"⚔️ <b>КРЕСТОВЫЙ ПОХОД!</b> {cnt} юзеров получают +300!")
+
+        if not _full() and random.random() < 0.05:
+            avg_r = await run_in_thread(self._storage.get_average_rating, chat_id=chat_id)
+            nearest = await run_in_thread(self._storage.get_nearest_rating_user, chat_id=chat_id, rating=avg_r, exclude_id=from_user.id)
+            if nearest:
+                kn, *_ = await run_in_thread(self._storage.add_points, user_id=nearest.user_id, delta=3000)
+                _ev("coronation", f"👑 <b>КОРОНАЦИЯ!</b> {_display_name_from_row(nearest)} ближе всех к среднему — коронован! +3000 → {kn}")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating > 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-(u.rating // 3))
+                    cnt += 1
+            if cnt:
+                _ev("plague", f"🏴‍☠️ <b>ЧУМА!</b> {cnt} юзеров потеряли 33% рейтинга!")
+
+        if not _full() and random.random() < 0.05:
+            fighters = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=2)
+            if len(fighters) == 2:
+                if fighters[0].rating >= fighters[1].rating:
+                    w, l = fighters[0], fighters[1]
+                else:
+                    w, l = fighters[1], fighters[0]
+                diff = abs(w.rating - l.rating)
+                await run_in_thread(self._storage.add_points, user_id=w.user_id, delta=diff)
+                _ev("knight_tourney", f"🛡️ <b>РЫЦАРСКИЙ ТУРНИР!</b> {_display_name_from_row(w)} побеждает! +{diff}")
+
+        if not _full() and random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating == 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=1000)
+                    cnt += 1
+            if cnt:
+                _ev("notre_dame", f"🔔 <b>НОТР-ДАМ!</b> {cnt} юзеров с рейтингом 0 спасены! +1000")
+
+        if not _full() and random.random() < 0.04:
+            bot1 = await run_in_thread(self._storage.get_bottom_users, chat_id=chat_id, limit=1)
+            if bot1:
+                bn, *_ = await run_in_thread(self._storage.add_points, user_id=bot1[0].user_id, delta=bot1[0].rating * 2 if bot1[0].rating > 0 else 3000)
+                _ev("joan_of_arc", f"👸 <b>ЖАННА Д'АРК!</b> {_display_name_from_row(bot1[0])} восстаёт! → {bn}")
+
+        if not _full() and random.random() < 0.05:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                cn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=1492)
+                _ev("columbus", f"🗺️ <b>КОЛУМБ!</b> {_display_name_from_row(u)} открывает Америку! +1492 → {cn}")
+
+        if not _full() and random.random() < 0.04:
+            raiders = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=3)
+            victims_v = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=3)
+            if raiders and victims_v:
+                rparts = []
+                for r, v in zip(raiders, victims_v):
+                    if r.user_id != v.user_id:
+                        await run_in_thread(self._storage.add_points, user_id=r.user_id, delta=200)
+                        await run_in_thread(self._storage.add_points, user_id=v.user_id, delta=-200)
+                        rparts.append(f"{_display_name_from_row(r)}→{_display_name_from_row(v)}")
+                if rparts:
+                    _ev("vikings", f"⚓ <b>ВИКИНГИ!</b> Грабёж: {', '.join(rparts[:3])}")
+
+        # ASIA (31-45)
+        if not _full() and random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=30)
+            for u in all_u:
+                new_r = int(u.rating * 1.08)
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+            _ev("chinese_dragon", f"🐲 <b>КИТАЙСКИЙ ДРАКОН!</b> Все рейтинги ×1.08!")
+
+        if not _full() and random.random() < 0.04:
+            cnt = await run_in_thread(self._storage.reset_negative_ratings, chat_id=chat_id)
+            if cnt:
+                _ev("great_wall", f"🧱 <b>ВЕЛИКАЯ СТЕНА!</b> {cnt} юзеров с минусом защищены → 0")
+
+        if not _full() and random.random() < 0.04:
+            await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-(await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)))
+            cn, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=abs(delta) * 5)
+            _ev("kamikaze", f"🎌 <b>КАМИКАДЗЕ!</b> Голосующий обнулён, цель получает x5! → {cn}")
+
+        if not _full() and random.random() < 0.05:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=888)
+            _ev("chinese_new_year", f"🏮 <b>КИТАЙСКИЙ НОВЫЙ ГОД!</b> Всем +888! ({cnt} юзеров)")
+
+        if not _full() and random.random() < 0.04:
+            second = await run_in_thread(self._storage.top, chat_id=chat_id, limit=2)
+            if len(second) >= 2:
+                await run_in_thread(self._storage.swap_ratings, uid1=second[0].user_id, uid2=second[1].user_id)
+                _ev("shogun", f"⛩️ <b>СЁГУН!</b> {_display_name_from_row(second[1])} свергает {_display_name_from_row(second[0])}!")
+
+        if not _full() and random.random() < 0.05:
+            tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            bonus = abs(tr) // 10 if tr else 500
+            bn, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=bonus)
+            _ev("bamboo", f"🎋 <b>БАМБУК!</b> Рейтинг {target_name} растёт! +{bonus} → {bn}")
+
+        if not _full() and random.random() < 0.04:
+            nearest0 = await run_in_thread(self._storage.get_nearest_rating_user, chat_id=chat_id, rating=0, exclude_id=from_user.id)
+            if nearest0:
+                pn, *_ = await run_in_thread(self._storage.add_points, user_id=nearest0.user_id, delta=2000)
+                _ev("panda", f"🐼 <b>ПАНДА!</b> {_display_name_from_row(nearest0)} ближе всех к нулю — +2000 → {pn}")
+
+        if not _full() and random.random() < 0.03:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1:
+                en, *_ = await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=8848)
+                _ev("everest", f"🏔️ <b>ЭВЕРЕСТ!</b> {_display_name_from_row(top1[0])} на вершине! +8848 → {en}")
+
+        if not _full() and random.random() < 0.04:
+            lucky5 = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=5)
+            if lucky5:
+                total = 5000
+                lparts = []
+                for u in lucky5:
+                    share = random.randint(100, total - 100 * (len(lucky5) - len(lparts) - 1)) if len(lparts) < len(lucky5) - 1 else total
+                    share = min(share, total)
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=share)
+                    lparts.append(f"{_display_name_from_row(u)} +{share}")
+                    total -= share
+                _ev("red_envelope", f"🧧 <b>КРАСНЫЙ КОНВЕРТ!</b> {', '.join(lparts[:3])}")
+
+        if not _full() and random.random() < 0.03:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1:
+                steal = top1[0].rating * 30 // 100
+                all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=10, exclude_id=top1[0].user_id)
+                await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=-steal)
+                for u in all_u:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=steal // max(len(all_u), 1))
+                _ev("genghis_khan", f"🗡️ <b>ЧИНГИСХАН!</b> {_display_name_from_row(top1[0])} теряет 30% ({steal})! Роздано народу!")
+
+        # FRANCE & EUROPE (46-60)
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                new_r = int(u.rating * 1.1) if u.rating > 0 else u.rating
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+            _ev("eiffel", f"🗼 <b>ЭЙФЕЛЕВА БАШНЯ!</b> Все рейтинги ×1.1!")
+
+        if not _full() and random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                swing = random.randint(-10, 10) * u.rating // 100 if u.rating else random.randint(-100, 100)
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=swing)
+            _ev("bordeaux", f"🍷 <b>БОРДО!</b> Рейтинги бродят: ±10% у всех!")
+
+        if not _full() and random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1:
+                digits = str(abs(top1[0].rating))
+                if len(digits) > 1:
+                    chopped = int(digits[1:]) * (-1 if top1[0].rating < 0 else 1)
+                    await run_in_thread(self._storage.set_rating, user_id=top1[0].user_id, rating=chopped)
+                    _ev("guillotine", f"🗡️ <b>ГИЛЬОТИНА!</b> {_display_name_from_row(top1[0])}: {top1[0].rating} → {chopped}")
+
+        if not _full() and random.random() < 0.04:
+            top5 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=5)
+            others = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in top5:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=500)
+            for u in others:
+                if u.user_id not in {x.user_id for x in top5}:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-100)
+            _ev("versailles", f"🎪 <b>ВЕРСАЛЬ!</b> Топ-5 +500, остальные -100!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating < 0:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=1789)
+                    cnt += 1
+            if cnt:
+                _ev("bastille", f"🏴 <b>БАСТИЛИЯ!</b> {cnt} узников с минусом освобождены → 1789!")
+
+        if not _full() and random.random() < 0.04:
+            victims_n = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=3, exclude_id=from_user.id)
+            total_n = 0
+            for u in victims_n:
+                take = abs(u.rating) * 20 // 100 if u.rating else 200
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-take)
+                total_n += take
+            if total_n:
+                nn, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=total_n)
+                vname = f"{from_user.username}" if from_user.username else from_user.full_name
+                _ev("napoleon", f"⭐ <b>НАПОЛЕОН!</b> {vname} завоёвывает +{total_n} → {nn}")
+
+        if not _full() and random.random() < 0.04:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=100)
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1:
+                await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=-1000)
+            _ev("marsellaise", f"🎵 <b>МАРСЕЛЬЕЗА!</b> Всем +100, но топ-1 теряет 1000!")
+
+        if not _full() and random.random() < 0.04:
+            pair = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=2)
+            if len(pair) == 2:
+                avg_p = (pair[0].rating + pair[1].rating) // 2
+                await run_in_thread(self._storage.set_rating, user_id=pair[0].user_id, rating=avg_p)
+                await run_in_thread(self._storage.set_rating, user_id=pair[1].user_id, rating=avg_p)
+                _ev("habsburgs", f"🏰 <b>ГАБСБУРГИ!</b> {_display_name_from_row(pair[0])} + {_display_name_from_row(pair[1])} женятся! Оба → {avg_p}")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                new_r = int(u.rating * 1.618) if u.rating > 0 else u.rating
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+            _ev("renaissance", f"📐 <b>РЕНЕССАНС!</b> Все рейтинги ×1.618 (золотое сечение)!")
+
+        # AMERICA (61-75)
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating < 0:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=1776)
+                    cnt += 1
+            if cnt:
+                _ev("liberty", f"🗽 <b>СТАТУЯ СВОБОДЫ!</b> {cnt} юзеров с минусом → 1776!")
+
+        if not _full() and random.random() < 0.04:
+            mult_lv = random.uniform(0.5, 2.0)
+            tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            new_r = int(tr * mult_lv)
+            await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=new_r)
+            _ev("las_vegas", f"🎰 <b>ЛАС-ВЕГАС!</b> {target_name}: {tr} ×{mult_lv:.1f} = {new_r}")
+
+        if not _full() and random.random() < 0.05:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                nn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=1969)
+                _ev("nasa", f"🚀 <b>NASA!</b> {_display_name_from_row(u)} летит на Луну! +1969 → {nn}")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                if u.rating > 5000:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=u.rating * 10 // 100)
+                elif u.rating < 1000 and u.rating > 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-(u.rating * 10 // 100))
+            _ev("wall_street", f"💵 <b>УОЛЛ-СТРИТ!</b> Богатые +10%, бедные -10%!")
+
+        if not _full() and random.random() < 0.04:
+            shuffled = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=10)
+            if len(shuffled) >= 2:
+                ratings_s = [u.rating for u in shuffled]
+                random.shuffle(ratings_s)
+                for u, r in zip(shuffled, ratings_s):
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=r)
+                _ev("hurricane", f"🌪️ <b>УРАГАН!</b> Рейтинги {len(shuffled)} юзеров перемешаны!")
+
+        if not _full() and random.random() < 0.05:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=100)
+            _ev("mcdonalds", f"🍔 <b>МАКДОНАЛЬДС!</b> Всем +100! ({cnt} юзеров)")
+
+        if not _full() and random.random() < 0.04:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                nn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=u.rating)
+                _ev("oil", f"🛢️ <b>НЕФТЬ!</b> {_display_name_from_row(u)} нашёл нефть! Рейтинг ×2 → {nn}")
+
+        if not _full() and random.random() < 0.04:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=0)
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=30)
+            for u in all_u:
+                new_r = u.rating + (u.rating * 3 // 100)
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+            _ev("fed", f"🏦 <b>ФРС!</b> Все рейтинги +3%!")
+
+        if not _full() and random.random() < 0.04:
+            tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            half = tr // 2
+            await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-half)
+            await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=1000)
+            _ev("elvis", f"🎤 <b>ЭЛВИС!</b> {target_name}: рейтинг ÷2 потом +1000!")
+
+        # WARS (76-90)
+        if not _full() and random.random() < 0.02:
+            cnt = await run_in_thread(self._storage.halve_all_ratings, chat_id=chat_id)
+            await run_in_thread(self._storage.halve_all_ratings, chat_id=chat_id)
+            _ev("hiroshima", f"💣 <b>ХИРОСИМА!</b> Все рейтинги ÷10!")
+
+        if not _full() and random.random() < 0.04:
+            bot5 = await run_in_thread(self._storage.get_bottom_users, chat_id=chat_id, limit=5)
+            for u in bot5:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=1944)
+            if bot5:
+                _ev("d_day", f"🪖 <b>Д-ДЕНЬ!</b> {len(bot5)} юзеров с наименьшим рейтингом +1944!")
+
+        if not _full() and random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            top2 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=2)
+            if len(top2) >= 2:
+                give = top2[0].rating // 2
+                await run_in_thread(self._storage.add_points, user_id=top2[0].user_id, delta=-give)
+                await run_in_thread(self._storage.add_points, user_id=top2[1].user_id, delta=give)
+                _ev("capitulation", f"🏳️ <b>КАПИТУЛЯЦИЯ!</b> {_display_name_from_row(top2[0])} отдаёт 50% второму!")
+
+        if not _full() and random.random() < 0.03:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            avg_vp = sum(u.rating for u in all_u) // max(len(all_u), 1)
+            for u in all_u:
+                diff_vp = avg_vp - u.rating
+                move = diff_vp // 2
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=move)
+            _ev("versailles_peace", f"🕊️ <b>ВЕРСАЛЬСКИЙ МИР!</b> Все рейтинги сближены к среднему!")
+
+        if not _full() and random.random() < 0.04:
+            top3_w = await run_in_thread(self._storage.top, chat_id=chat_id, limit=3)
+            if len(top3_w) >= 3:
+                tn, *_ = await run_in_thread(self._storage.add_points, user_id=top3_w[2].user_id, delta=top3_w[2].rating * 2)
+                _ev("red_baron", f"🛩️ <b>КРАСНЫЙ БАРОН!</b> Третий по рейтингу ({_display_name_from_row(top3_w[2])}) получает x3! → {tn}")
+
+        if not _full() and random.random() < 0.05:
+            await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=500)
+            await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=500)
+            _ev("medal", f"🎖️ <b>МЕДАЛЬ!</b> Голосующий и цель оба получают +500!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for i, u in enumerate(all_u):
+                d = 500 if i < len(all_u) // 2 else -500
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=d)
+            _ev("cold_war", f"🔭 <b>ХОЛОДНАЯ ВОЙНА!</b> Половина +500, половина -500!")
+
+        if not _full() and random.random() < 0.04:
+            bot3_p = await run_in_thread(self._storage.get_bottom_users, chat_id=chat_id, limit=3)
+            top3_p = await run_in_thread(self._storage.top, chat_id=chat_id, limit=3)
+            for b, t in zip(bot3_p, top3_p):
+                await run_in_thread(self._storage.add_points, user_id=b.user_id, delta=500)
+                await run_in_thread(self._storage.add_points, user_id=t.user_id, delta=-500)
+            _ev("partisans", f"🏴 <b>ПАРТИЗАНЫ!</b> Боттом-3 крадут по 500 у топ-3!")
+
+        if not _full() and random.random() < 0.05:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=1945)
+            _ev("victory", f"🎺 <b>ПОБЕДА!</b> Всем +1945! ({cnt} юзеров)")
+
+        if not _full() and random.random() < 0.04:
+            top5_n = await run_in_thread(self._storage.top, chat_id=chat_id, limit=5)
+            if len(top5_n) >= 2:
+                avg_nato = sum(u.rating for u in top5_n) // len(top5_n)
+                for u in top5_n:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=avg_nato)
+                _ev("nato", f"🛡️ <b>НАТО!</b> Топ-5 делят рейтинг поровну → {avg_nato}")
+
+        # TECH & MODERN (91-110)
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=random.randint(-500, 500))
+            _ev("windows", f"💻 <b>WINDOWS!</b> Перезагрузка! Все рейтинги ±500!")
+
+        if not _full() and random.random() < 0.04:
+            tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            new_r = tr ^ 9999
+            await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=new_r)
+            _ev("bug", f"🐛 <b>БАГ!</b> {target_name}: {tr} XOR 9999 = {new_r}")
+
+        if not _full() and random.random() < 0.04:
+            nearest_z = await run_in_thread(self._storage.get_nearest_rating_user, chat_id=chat_id, rating=0, exclude_id=from_user.id)
+            if nearest_z:
+                vn, *_ = await run_in_thread(self._storage.add_points, user_id=nearest_z.user_id, delta=nearest_z.rating * 9 if nearest_z.rating else 5000)
+                _ev("tiktok", f"📱 <b>ТИКТОК!</b> {_display_name_from_row(nearest_z)} вирусится! ×10 → {vn}")
+
+        if not _full() and random.random() < 0.04:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                predicted = random.randint(-5000, 10000)
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=predicted)
+                _ev("chatgpt", f"🤖 <b>CHATGPT!</b> Предсказываю рейтинг {_display_name_from_row(u)}: {predicted}")
+
+        if not _full() and random.random() < 0.02:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=0)
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=30)
+            for u in all_u:
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=u.rating * 5)
+            _ev("5g", f"📡 <b>5G!</b> Все рейтинги ×5!")
+
+        if not _full() and random.random() < 0.04:
+            mult_btc = random.uniform(0.3, 3.0)
+            tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            new_r = int(tr * mult_btc)
+            await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=new_r)
+            _ev("bitcoin", f"🪙 <b>БИТКОИН!</b> {target_name}: {tr} ×{mult_btc:.1f} = {new_r}")
+
+        if not _full() and random.random() < 0.04:
+            tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            parts_nft = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=3, exclude_id=to_user.id)
+            if parts_nft and tr != 0:
+                share_nft = tr // max(len(parts_nft), 1)
+                await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=0)
+                nparts = []
+                for u in parts_nft:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=share_nft)
+                    nparts.append(_display_name_from_row(u))
+                _ev("nft", f"🎲 <b>NFT!</b> Рейтинг {target_name} ({tr}) разбит на токены: {', '.join(nparts)}")
+
+        if not _full() and random.random() < 0.04:
+            wrong = await run_in_thread(self._storage.get_random_user, chat_id=chat_id, exclude_id=to_user.id)
+            if wrong:
+                await run_in_thread(self._storage.add_points, user_id=wrong.user_id, delta=delta)
+                _ev("tesla", f"🚗 <b>ТЕСЛА!</b> Автопилот ошибся — рейтинг ушёл к {_display_name_from_row(wrong)}!")
+
+        if not _full() and random.random() < 0.04:
+            self._pending_credits.setdefault(to_user.id, []).append((5, -(abs(delta) * 2)))
+            dn, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=abs(delta) * 2)
+            _ev("amazon", f"📦 <b>АМАЗОН!</b> {target_name} получает +{abs(delta)*2} → {dn}. Через 5 голосований вернут!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                if u.rating > 280:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=280)
+            _ev("twitter", f"🐦 <b>ТВИТТЕР!</b> Рейтинги > 280 обрезаны до 280!")
+
+        if not _full() and random.random() < 0.05:
+            await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=delta)
+            _ev("selfie", f"🤳 <b>СЕЛФИ!</b> Голосующий тоже получает {delta:+d}!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            same = {}
+            for u in all_u:
+                bucket = u.rating // 100
+                same.setdefault(bucket, []).append(u)
+            cleared = 0
+            for bucket, users in same.items():
+                if len(users) >= 2:
+                    for u in users:
+                        await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=0)
+                        cleared += 1
+            if cleared:
+                _ev("tetris", f"🕹️ <b>ТЕТРИС!</b> {cleared} юзеров с похожим рейтингом обнулены!")
+
+        if not _full() and random.random() < 0.04:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                d_elon = 5000 if random.random() < 0.5 else -5000
+                en, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=d_elon)
+                _ev("elon", f"🔋 <b>ИЛОН!</b> {_display_name_from_row(u)} получает {d_elon:+d} → {en}")
+
+        # MYTHOLOGY & FANTASY (111-125)
+        if not _full() and random.random() < 0.04:
+            await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-(await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)) // 4)
+            _ev("vampire", f"🧛 <b>ВАМПИР!</b> Голосующий высасывает 25% рейтинга цели!")
+
+        if not _full() and random.random() < 0.04:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                new_r = random.randint(1, 10000)
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+                _ev("merlin", f"🔮 <b>МЕРЛИН!</b> {_display_name_from_row(u)}: рейтинг превращён в {new_r}!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating == 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=2000)
+                    cnt += 1
+            if cnt:
+                _ev("phoenix", f"🦅 <b>ФЕНИКС!</b> {cnt} юзеров с рейтингом 0 возрождаются! +2000")
+
+        if not _full() and random.random() < 0.04:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                loss = abs(u.rating) // 3
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-loss)
+                _ev("reaper", f"💀 <b>ЖНЕЦ!</b> {_display_name_from_row(u)} теряет 1/3 рейтинга: -{loss}")
+
+        if not _full() and random.random() < 0.04:
+            fr = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
+            await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=fr)
+            _ev("djinn", f"🧞 <b>ДЖИНН!</b> Рейтинг {target_name} = рейтинг голосующего ({fr})!")
+
+        if not _full() and random.random() < 0.04:
+            lucky4 = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=4)
+            houses = [("+1000", 1000), ("+500", 500), ("+200", 200), ("-500", -500)]
+            hparts = []
+            for u, (label, pts) in zip(lucky4, houses):
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=pts)
+                hparts.append(f"{_display_name_from_row(u)} {label}")
+            if hparts:
+                _ev("hogwarts", f"🏰 <b>ХОГВАРТС!</b> Распределение: {', '.join(hparts)}")
+
+        # NATURE & DISASTERS (126-140)
+        if not _full() and random.random() < 0.03:
+            all_u = await run_in_thread(self._storage.top, chat_id=chat_id, limit=20)
+            if len(all_u) >= 2:
+                ratings_wave = [u.rating for u in all_u]
+                shifted = [ratings_wave[-1]] + ratings_wave[:-1]
+                for u, r in zip(all_u, shifted):
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=r)
+                _ev("tsunami", f"🌊 <b>ЦУНАМИ!</b> Рейтинги сдвинулись на 1 позицию!")
+
+        if not _full() and random.random() < 0.03:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1 and top1[0].rating > 0:
+                share_v = top1[0].rating // 5
+                victims_e = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=5, exclude_id=top1[0].user_id)
+                await run_in_thread(self._storage.set_rating, user_id=top1[0].user_id, rating=0)
+                for u in victims_e:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=share_v)
+                _ev("eruption", f"🌋 <b>ИЗВЕРЖЕНИЕ!</b> {_display_name_from_row(top1[0])} извергается! Рейтинг {top1[0].rating} раздан!")
+
+        if not _full() and random.random() < 0.03:
+            avg_m = await run_in_thread(self._storage.get_average_rating, chat_id=chat_id)
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating > avg_m:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-(u.rating * 40 // 100))
+                    cnt += 1
+            if cnt:
+                _ev("meteorite", f"☄️ <b>МЕТЕОРИТ!</b> {cnt} юзеров > среднего потеряли 40%!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            cnt = 0
+            for u in all_u:
+                if u.rating < 500 and u.rating > 0:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=0)
+                    cnt += 1
+                elif u.rating >= 500:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=500)
+            if cnt:
+                _ev("flood", f"🌊 <b>ПОТОП!</b> Рейтинги < 500 утонули, > 500 получили +500!")
+
+        if not _full() and random.random() < 0.05:
+            swarm = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=10)
+            for u in swarm:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=100)
+            _ev("swarm", f"🐝 <b>РОЙ!</b> {len(swarm)} юзеров получают по +100!")
+
+        if not _full() and random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, chat_id=chat_id, limit=1)
+            if top1:
+                nearest_s = await run_in_thread(self._storage.get_nearest_rating_user, chat_id=chat_id, rating=top1[0].rating, exclude_id=top1[0].user_id)
+                if nearest_s:
+                    loss_s = abs(nearest_s.rating) * 30 // 100
+                    await run_in_thread(self._storage.add_points, user_id=nearest_s.user_id, delta=-loss_s)
+                    _ev("shark", f"🦈 <b>АКУЛА!</b> {_display_name_from_row(nearest_s)} укушен! -{loss_s}")
+
+        if not _full() and random.random() < 0.04:
+            top3_a = await run_in_thread(self._storage.top, chat_id=chat_id, limit=3)
+            bot3_a = await run_in_thread(self._storage.get_bottom_users, chat_id=chat_id, limit=3)
+            total_a = 0
+            for u in top3_a:
+                loss_a = abs(u.rating) * 20 // 100
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-loss_a)
+                total_a += loss_a
+            if bot3_a and total_a:
+                share_a = total_a // len(bot3_a)
+                for u in bot3_a:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=share_a)
+            _ev("avalanche", f"🏔️ <b>ЛАВИНА!</b> Топ-3 теряют 20%, боттом-3 получают!")
+
+        if not _full() and random.random() < 0.04:
+            u = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if u:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-(abs(u.rating) // 2))
+                _ev("crocodile", f"🐊 <b>КРОКОДИЛ!</b> {_display_name_from_row(u)} теряет половину!")
+
+        if not _full() and random.random() < 0.04:
+            target_butterfly = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if target_butterfly:
+                small_d = delta // 100 if delta else 1
+                big_d = delta * 100 if delta else 10000
+                await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=small_d)
+                await run_in_thread(self._storage.add_points, user_id=target_butterfly.user_id, delta=big_d)
+                _ev("butterfly", f"🦋 <b>ЭФФЕКТ БАБОЧКИ!</b> {target_name} получает {small_d:+d}, {_display_name_from_row(target_butterfly)} получает {big_d:+d}!")
+
+        if not _full() and random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                if u.rating > 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=u.rating // 100)
+            _ev("photosynthesis", f"🌿 <b>ФОТОСИНТЕЗ!</b> Все положительные рейтинги +1%!")
+
+        # ECONOMICS & POLITICS (141-150)
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=u.rating * 20 // 100)
+            _ev("bull_market", f"📈 <b>БЫЧИЙ РЫНОК!</b> Все рейтинги +20%!")
+
+        if not _full() and random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=20)
+            for u in all_u:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-(abs(u.rating) * 20 // 100))
+            _ev("bear_market", f"📉 <b>МЕДВЕЖИЙ РЫНОК!</b> Все рейтинги -20%!")
+
+        if not _full() and random.random() < 0.04:
+            bot1_b = await run_in_thread(self._storage.get_bottom_users, chat_id=chat_id, limit=1)
+            if bot1_b:
+                avg_b = await run_in_thread(self._storage.get_average_rating, chat_id=chat_id)
+                await run_in_thread(self._storage.set_rating, user_id=bot1_b[0].user_id, rating=avg_b * 2)
+                _ev("bailout", f"🏦 <b>BAIL-OUT!</b> {_display_name_from_row(bot1_b[0])} спасён государством! → {avg_b * 2}")
+
+        if not _full() and random.random() < 0.04:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, chat_id=chat_id, delta=1000)
+            await run_in_thread(self._storage.halve_all_ratings, chat_id=chat_id)
+            _ev("printing_press", f"🖨️ <b>ПЕЧАТНЫЙ СТАНОК!</b> Всем +1000, потом всё ÷2!")
+
+        if not _full() and random.random() < 0.04:
+            self._pending_credits.setdefault(to_user.id, []).append((7, 9000))
+            cn, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=3000)
+            _ev("mmm", f"🏪 <b>МММ!</b> {target_name} получает +3000 → {cn}. Через 7 голосований спишут 9000!")
+
+        if not _full() and random.random() < 0.04:
+            pair_e = await run_in_thread(self._storage.get_random_users, chat_id=chat_id, count=2)
+            if len(pair_e) == 2:
+                w_e = random.choice([0, 1])
+                l_e = 1 - w_e
+                await run_in_thread(self._storage.add_points, user_id=pair_e[w_e].user_id, delta=2000)
+                await run_in_thread(self._storage.add_points, user_id=pair_e[l_e].user_id, delta=-2000)
+                _ev("elections", f"🎪 <b>ВЫБОРЫ!</b> {_display_name_from_row(pair_e[w_e])} +2000, {_display_name_from_row(pair_e[l_e])} -2000!")
+
+        if not _full() and random.random() < 0.04:
+            self._pending_credits.setdefault(to_user.id, []).append((20, 500))
+            tn, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=10000)
+            _ev("mortgage", f"🏠 <b>ИПОТЕКА!</b> {target_name} получает +10000 → {tn}. Каждые 5 голосов -500 (20 раз)!")
+
+        if not _full() and random.random() < 0.01:
+            lucky_j = await run_in_thread(self._storage.get_random_user, chat_id=chat_id)
+            if lucky_j:
+                jn, *_ = await run_in_thread(self._storage.add_points, user_id=lucky_j.user_id, delta=100000)
+                _ev("jackpot_mega", f"💰 <b>МЕГА-ДЖЕКПОТ!</b> {_display_name_from_row(lucky_j)} получает +100000! → {jn}")
+
         # === PERIODIC EVENTS ===
 
         # Tax on top-1 (every ~50 votes)
