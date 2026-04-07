@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import time
 from collections import defaultdict
 
-from aiogram import Bot, Router
+from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command
 from aiogram.types import Message, User
@@ -349,10 +350,7 @@ async def cmd_stats(message: Message, ctx: AppContext) -> None:
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-@router.message(Command(
-    "stats5", "stats10", "stats15", "stats20", "stats25", "stats30",
-    "stats50", "stats100",
-))
+@router.message(F.text.regexp(r"^/stats\d+"))
 async def cmd_stats_n(message: Message, ctx: AppContext) -> None:
     if not message.from_user or not message.text:
         return
