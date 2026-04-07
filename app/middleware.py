@@ -149,6 +149,13 @@ class ActivityRatingMiddleware(BaseMiddleware):
                                     await message.answer_sticker(sticker.file_id)
                             except Exception:
                                 pass
+                        if vr.send_xuan_sticker and bot is not None:
+                            try:
+                                sset = await bot.get_sticker_set("xuan_sol_by_fStikBot")
+                                if sset.stickers:
+                                    await message.answer_sticker(sset.stickers[0].file_id)
+                            except Exception:
+                                pass
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(

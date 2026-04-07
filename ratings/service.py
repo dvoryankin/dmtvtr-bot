@@ -34,6 +34,7 @@ class VoteResult:
     crazy_text: str | None = None
     events: list[str] = field(default_factory=list)
     send_sticker: bool = False
+    send_xuan_sticker: bool = False
     ghost: bool = False
     display_delta: int | None = None
 
@@ -145,6 +146,7 @@ class RatingService:
         self._pending_credits: dict[int, list[tuple[int, int]]] = {}  # user_id -> [(votes_left, amount)]
         self._stats: dict[str, int] = defaultdict(int)
         self._event_stats: dict[str, int] = defaultdict(int)
+        self._event_total: int = 0
 
     def init_db(self) -> None:
         self._storage.init_db()
@@ -698,6 +700,279 @@ class RatingService:
                     new_rating = 0
                 _ev("abduction", f"🛸 <b>ПОХИЩЕНИЕ!</b> Рейтинг {target_name} ({cur_r}) телепортирован к {aname} → {abd_new}")
 
+        # === СОВЕТСКИЕ СОБЫТИЯ ===
+
+        # 1. Пятилетка (1/25) — все рейтинги x3
+        if random.random() < 0.04:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, delta=0)
+            # multiply by 3: double + original
+            await run_in_thread(self._storage.double_all_ratings)
+            cnt2 = await run_in_thread(self._storage.add_flat_to_all, delta=0)
+            _ev("pyatiletka", f"☭ <b>ПЯТИЛЕТКУ ЗА 3 ГОДА!</b> Все рейтинги утроены! Партия одобряет!")
+
+        # 2. Стахановец (1/15) — voter gets x5
+        if random.random() < 0.066:
+            vr_rating = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
+            bonus = abs(vr_rating) * 4 if vr_rating != 0 else 2000
+            stak_new, _ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=bonus)
+            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            _ev("stakhanovets", f"🔨 <b>СТАХАНОВЕЦ!</b> {vname} перевыполнил план! Рейтинг x5 → {stak_new}")
+
+        # 3. Госплан (1/25) — все рейтинги = среднее
+        if random.random() < 0.04:
+            avg_r = await run_in_thread(self._storage.get_average_rating)
+            users_all = await run_in_thread(self._storage.get_random_users, count=100)
+            for u in users_all:
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=avg_r)
+            _ev("gosplan", f"📋 <b>ГОСПЛАН!</b> Все рейтинги выровнены до {avg_r}! Уравниловка!")
+
+        # 4. Индустриализация (1/15) — всем +1000
+        if random.random() < 0.066:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, delta=1000)
+            _ev("industrializatsiya", f"🏭 <b>ИНДУСТРИАЛИЗАЦИЯ!</b> Все {cnt} юзеров получают +1000! Даёшь план!")
+
+        # 5. Коллективизация (1/20) — 5 юзеров складываются и делят поровну
+        if random.random() < 0.05:
+            kolhoz = await run_in_thread(self._storage.get_random_users, count=5)
+            if len(kolhoz) >= 2:
+                total = sum(u.rating for u in kolhoz)
+                share = total // len(kolhoz)
+                knames = []
+                for u in kolhoz:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=share)
+                    knames.append(_display_name_from_row(u))
+                _ev("kollektivizatsiya", f"🌾 <b>КОЛЛЕКТИВИЗАЦИЯ!</b> Рейтинги обобществлены: {', '.join(knames)} → по {share}")
+
+        # 6. Спутник (1/20) — случайный юзер +10000
+        if random.random() < 0.05:
+            cosmo = await run_in_thread(self._storage.get_random_user)
+            if cosmo:
+                sp_new, _ = await run_in_thread(self._storage.add_points, user_id=cosmo.user_id, delta=10000)
+                _ev("sputnik", f"🚀 <b>СПУТНИК!</b> {_display_name_from_row(cosmo)} запущен на орбиту! +10000 → {sp_new}")
+
+        # 7. Правда (1/20) — показывает утроенный рейтинг, а реальный другой
+        if random.random() < 0.05 and not ghost:
+            if display_delta is None:
+                display_delta = delta * 3
+            _ev("pravda", "📰 <b>ПРАВДА!</b> Цифры в газете могут отличаться от реальности...")
+
+        # 8. БАМ (1/15) — случайный юзер получает 1000-5000
+        if random.random() < 0.066:
+            builder = await run_in_thread(self._storage.get_random_user)
+            if builder:
+                bam_d = random.randint(1000, 5000)
+                bam_new, _ = await run_in_thread(self._storage.add_points, user_id=builder.user_id, delta=bam_d)
+                _ev("bam", f"🏗️ <b>БАМ!</b> {_display_name_from_row(builder)} строит магистраль! +{bam_d} → {bam_new}")
+
+        # 9. Герой Соцтруда (1/20) — топ-1 получает +5000
+        if random.random() < 0.05:
+            top1 = await run_in_thread(self._storage.top, limit=1)
+            if top1:
+                hero_new, _ = await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=5000)
+                _ev("hero_soctrud", f"🎖️ <b>ГЕРОЙ СОЦТРУДА!</b> {_display_name_from_row(top1[0])} награждён! +5000 → {hero_new}")
+
+        # 10. Дефицит (1/20) — у всех с рейтингом > 1000 списывается 50%
+        if random.random() < 0.05:
+            rich = await run_in_thread(self._storage.get_random_users, count=50)
+            dnames = []
+            for u in rich:
+                if u.rating > 1000:
+                    loss = u.rating // 2
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-loss)
+                    dnames.append(_display_name_from_row(u))
+            if dnames:
+                _ev("deficit", f"📦 <b>ДЕФИЦИТ!</b> У богатых изъято 50%: {', '.join(dnames[:5])}")
+
+        # 11. Военный коммунизм (1/50) — все рейтинги обнуляются
+        if random.random() < 0.02:
+            users_all = await run_in_thread(self._storage.get_random_users, count=200)
+            for u in users_all:
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=0)
+            new_rating = 0
+            _ev("voenny_communism", "🪖 <b>ВОЕННЫЙ КОММУНИЗМ!</b> Все рейтинги обнулены! Начинаем с чистого листа!")
+
+        # 12. Политбюро (1/20) — топ-5 теряют по 20%
+        if random.random() < 0.05:
+            top5 = await run_in_thread(self._storage.top, limit=5)
+            pnames = []
+            for u in top5:
+                if u.rating > 0:
+                    loss = u.rating * 20 // 100
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-loss)
+                    pnames.append(f"{_display_name_from_row(u)} -{loss}")
+            if pnames:
+                _ev("politburo", f"🏛️ <b>ПОЛИТБЮРО!</b> Чистка элит: {', '.join(pnames)}")
+
+        # 13. Пропаганда (1/15) — рейтинг цели удваивается
+        if random.random() < 0.066:
+            pr_r = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=pr_r)
+            if actual_target_id == to_user.id:
+                new_rating = pr_r * 2
+            _ev("propaganda", f"📢 <b>ПРОПАГАНДА!</b> Рейтинг {target_name} удвоен! {pr_r} → {pr_r * 2}")
+
+        # 14. Транссиб (1/20) — рейтинг передается по цепочке 3 юзерам
+        if random.random() < 0.05:
+            chain = await run_in_thread(self._storage.get_random_users, count=3)
+            if len(chain) >= 2:
+                cparts = []
+                carry = abs(delta) if delta != 0 else 500
+                for u in chain:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=carry)
+                    cparts.append(f"{_display_name_from_row(u)} +{carry}")
+                    carry = carry // 2
+                _ev("transsib", f"🚂 <b>ТРАНССИБ!</b> Рейтинг едет по рельсам: {' → '.join(cparts)}")
+
+        # 15. Коммуналка (1/20) — 3 юзера получают одинаковый рейтинг
+        if random.random() < 0.05:
+            neighbors = await run_in_thread(self._storage.get_random_users, count=3)
+            if len(neighbors) >= 2:
+                avg_n = sum(u.rating for u in neighbors) // len(neighbors)
+                nnames = []
+                for u in neighbors:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=avg_n)
+                    nnames.append(_display_name_from_row(u))
+                _ev("kommunalka", f"🏠 <b>КОММУНАЛКА!</b> Соседи уравнены: {', '.join(nnames)} → {avg_n}")
+
+        # 16. Субботник (1/10) — все получают +100
+        if random.random() < 0.1:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, delta=100)
+            _ev("subbotnik", f"🧹 <b>СУББОТНИК!</b> Все {cnt} юзеров получают +100! Труд — дело чести!")
+
+        # 17. Матрёшка (1/15) — дельта применяется 3 раза, каждый раз /2
+        if random.random() < 0.066:
+            mat_total = 0
+            mat_d = abs(delta) if delta != 0 else 500
+            for _ in range(3):
+                await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=mat_d)
+                mat_total += mat_d
+                mat_d //= 2
+            mat_r = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            if actual_target_id == to_user.id:
+                new_rating = mat_r
+            _ev("matryoshka", f"🪆 <b>МАТРЁШКА!</b> Тройное вложение: +{mat_total} для {target_name} → {mat_r}")
+
+        # 18. ГУЛАГ (1/25) — случайный юзер теряет всё
+        if random.random() < 0.04:
+            prisoner = await run_in_thread(self._storage.get_random_user)
+            if prisoner and prisoner.rating != 0:
+                await run_in_thread(self._storage.set_rating, user_id=prisoner.user_id, rating=0)
+                _ev("gulag", f"🧊 <b>ГУЛАГ!</b> {_display_name_from_row(prisoner)} отправлен в лагеря! Рейтинг конфискован ({prisoner.rating} → 0)")
+
+        # 19. Голос Америки (1/20) — случайный юзер получает рейтинг * -1
+        if random.random() < 0.05:
+            dissident = await run_in_thread(self._storage.get_random_user)
+            if dissident and dissident.rating != 0:
+                await run_in_thread(self._storage.set_rating, user_id=dissident.user_id, rating=-dissident.rating)
+                _ev("voice_america", f"📻 <b>ГОЛОС АМЕРИКИ!</b> {_display_name_from_row(dissident)} перевербован! {dissident.rating} → {-dissident.rating}")
+
+        # 20. Кукурузник (1/20) — рейтинги = кол-во букв в нике * 100
+        if random.random() < 0.05:
+            corn_users = await run_in_thread(self._storage.get_random_users, count=5)
+            cparts = []
+            for u in corn_users:
+                name_len = len(u.username or u.first_name or "user")
+                new_r = name_len * 100
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+                cparts.append(f"{_display_name_from_row(u)} → {new_r}")
+            if cparts:
+                _ev("kukuruznik", f"🌽 <b>КУКУРУЗНИК!</b> Рейтинг = буквы × 100: {', '.join(cparts)}")
+
+        # 21. Балалайка (1/20) — цифры рейтинга сортируются по убыванию
+        if random.random() < 0.05:
+            cur_r = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
+            if abs(cur_r) > 9:
+                neg = cur_r < 0
+                digits = sorted(str(abs(cur_r)), reverse=True)
+                sorted_r = int("".join(digits))
+                if neg:
+                    sorted_r = -sorted_r
+                await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=sorted_r)
+                if actual_target_id == to_user.id:
+                    new_rating = sorted_r
+                _ev("balalaika", f"🪕 <b>БАЛАЛАЙКА!</b> Цифры {target_name} отсортированы: {cur_r} → {sorted_r}")
+
+        # 22. Олимпиада-80 (1/20) — топ-3 получают +1980
+        if random.random() < 0.05:
+            olymp = await run_in_thread(self._storage.top, limit=3)
+            onames = []
+            for u in olymp:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=1980)
+                onames.append(_display_name_from_row(u))
+            if onames:
+                _ev("olympiad80", f"🏅 <b>ОЛИМПИАДА-80!</b> {', '.join(onames)} получают +1980!")
+
+        # 23. Гагарин (1/20) — случайный юзер +1961
+        if random.random() < 0.05:
+            cosmonaut = await run_in_thread(self._storage.get_random_user)
+            if cosmonaut:
+                gag_new, _ = await run_in_thread(self._storage.add_points, user_id=cosmonaut.user_id, delta=1961)
+                _ev("gagarin", f"🛰️ <b>ПОЕХАЛИ!</b> {_display_name_from_row(cosmonaut)} летит в космос! +1961 → {gag_new}")
+
+        # 24. Красная Армия (1/15) — все с отрицательным рейтингом получают +500
+        if random.random() < 0.066:
+            bottom_all = await run_in_thread(self._storage.get_bottom_users, limit=20)
+            rnames = []
+            for u in bottom_all:
+                if u.rating < 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=500)
+                    rnames.append(_display_name_from_row(u))
+            if rnames:
+                _ev("red_army", f"🪖 <b>КРАСНАЯ АРМИЯ!</b> Мобилизация нищих! +500: {', '.join(rnames[:5])}")
+
+        # 25. Революция (1/30) — все рейтинги инвертируются
+        if random.random() < 0.033:
+            all_users = await run_in_thread(self._storage.get_random_users, count=200)
+            for u in all_users:
+                if u.rating != 0:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=-u.rating)
+            _ev("revolution", "🔴 <b>РЕВОЛЮЦИЯ!</b> Все рейтинги инвертированы! Кто был никем — тот станет всем!")
+
+        # 26. Завод (1/15) — голосующий производит дельта x10 для цели
+        if random.random() < 0.066:
+            factory_d = abs(delta) * 10 if delta != 0 else 5000
+            fac_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=factory_d)
+            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            if actual_target_id == to_user.id:
+                new_rating = fac_new
+            _ev("factory", f"🏭 <b>ЗАВОД!</b> {vname} перевыполнил норму! {target_name} получает +{factory_d} → {fac_new}")
+
+        # 27. Гимн СССР (1/15) — всем +300
+        if random.random() < 0.066:
+            cnt = await run_in_thread(self._storage.add_flat_to_all, delta=300)
+            _ev("anthem", f"🎵 <b>СОЮЗ НЕРУШИМЫЙ!</b> Все {cnt} юзеров встают и получают +300!")
+
+        # 28. Эмиграция (1/25) — топ-1 теряет всё
+        if random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, limit=1)
+            if top1 and top1[0].rating > 0:
+                await run_in_thread(self._storage.set_rating, user_id=top1[0].user_id, rating=0)
+                _ev("emigration", f"🧳 <b>ЭМИГРАЦИЯ!</b> {_display_name_from_row(top1[0])} уехал из страны! Рейтинг {top1[0].rating} → 0")
+
+        # 29. Продразвёрстка (1/20) — у каждого изымается 10%
+        if random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, count=50)
+            cnt = 0
+            for u in all_u:
+                if u.rating > 0:
+                    tax_amt = u.rating * 10 // 100
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-tax_amt)
+                    cnt += 1
+            if cnt:
+                _ev("prodrazverstka", f"🔫 <b>ПРОДРАЗВЁРСТКА!</b> У {cnt} юзеров изъято 10% рейтинга! На нужды фронта!")
+
+        # 30. Перестройка (1/25) — все рейтинги рандомно перемешиваются
+        if random.random() < 0.04:
+            perestroika = await run_in_thread(self._storage.get_random_users, count=10)
+            if len(perestroika) >= 2:
+                ratings_p = [u.rating for u in perestroika]
+                random.shuffle(ratings_p)
+                pnames = []
+                for u, r in zip(perestroika, ratings_p):
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=r)
+                    pnames.append(_display_name_from_row(u))
+                _ev("perestroika", f"🔄 <b>ПЕРЕСТРОЙКА!</b> Рейтинги перетасованы: {', '.join(pnames[:5])}...")
+
         # === PERIODIC EVENTS ===
 
         # Tax on top-1 (every ~50 votes)
@@ -723,12 +998,15 @@ class RatingService:
             self._next_multiplier = True
             _ev("multiplier_set", "⚡ <b>ВНИМАНИЕ:</b> следующее голосование будет x100!")
 
-        # Stats
+        # Stats & xuan sticker counter
         self._stats["total_votes"] += 1
+        event_count = len(events)
+        self._event_total += event_count
+        send_xuan = event_count > 0 and self._event_total % 10 < event_count
 
         # Crazy text
         crazy = self._check_crazy()
-        send_sticker = was_reset or crazy is not None or len(events) > 0
+        send_sticker = was_reset or crazy is not None or event_count > 0
 
         return VoteResult(
             ok=True,
@@ -738,6 +1016,7 @@ class RatingService:
             crazy_text=crazy,
             events=events,
             send_sticker=send_sticker,
+            send_xuan_sticker=send_xuan,
             ghost=ghost,
             display_delta=display_delta,
         )

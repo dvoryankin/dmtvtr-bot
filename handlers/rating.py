@@ -255,6 +255,13 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
                 await message.answer_sticker(sticker.file_id)
         except Exception:
             pass
+    if vr.send_xuan_sticker:
+        try:
+            sset = await bot.get_sticker_set("xuan_sol_by_fStikBot")
+            if sset.stickers:
+                await message.answer_sticker(sset.stickers[0].file_id)
+        except Exception:
+            pass
 
     # If this is a supergroup and both are admins, try to reflect badge as Telegram admin title.
     if message.chat.type in {"group", "supergroup"}:
