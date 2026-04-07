@@ -21,7 +21,7 @@ _stats_history: dict[int, list[float]] = defaultdict(list)
 # Vote ban: {user_id: ban_until_ts}
 _vote_bans: dict[int, float] = {}
 _STATS_COOLDOWN = 30
-_STATS_SPAM_COUNT = 5
+_STATS_SPAM_COUNT = 3
 _STATS_BAN_SECONDS = 300
 
 
