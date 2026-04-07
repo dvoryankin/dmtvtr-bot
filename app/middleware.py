@@ -131,7 +131,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         "Reply-minus: from=%s to=%s text=%r msg=%s",
                         message.from_user.id, to_user.id, maybe_text, praised_msg_id,
                     )
-                    ok, _new_rating, _retry_after, _delta, _was_reset = await self._ctx.rating.vote_minus_one(
+                    ok, _new_rating, _retry_after, _delta, _was_reset, _crazy = await self._ctx.rating.vote_minus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
@@ -146,10 +146,12 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         if _delta == 55555:
                             text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
                             text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
+                        if _crazy:
+                            text += f"\n\n<b>🧠 {_crazy}</b>"
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
-                        if _was_reset and bot is not None:
+                        if (_was_reset or _crazy) and bot is not None:
                             try:
                                 sset = await bot.get_sticker_set("likvidacia_blcktlk")
                                 if sset.stickers:
@@ -192,7 +194,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         praised_msg_id,
                         message.message_id,
                     )
-                    ok, _new_rating, _retry_after, _delta, _was_reset = await self._ctx.rating.vote_plus_one(
+                    ok, _new_rating, _retry_after, _delta, _was_reset, _crazy = await self._ctx.rating.vote_plus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
@@ -210,10 +212,12 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         if _delta == 55555:
                             text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
                             text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
+                        if _crazy:
+                            text += f"\n\n<b>🧠 {_crazy}</b>"
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
-                        if _was_reset and bot is not None:
+                        if (_was_reset or _crazy) and bot is not None:
                             try:
                                 sset = await bot.get_sticker_set("likvidacia_blcktlk")
                                 if sset.stickers:

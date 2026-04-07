@@ -214,7 +214,7 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         return
 
     to_user = message.reply_to_message.from_user
-    ok, new_rating, retry_after, delta, was_reset = await ctx.rating.vote_plus_one(
+    ok, new_rating, retry_after, delta, was_reset, crazy = await ctx.rating.vote_plus_one(
         chat_id=message.chat.id,
         from_user=message.from_user,
         to_user=to_user,
@@ -238,10 +238,12 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
     if delta == 55555:
         text += f"\n\n<b>🎰 {profile.display_name} — У ВАС РЕЙТИНГ {new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
         text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
+    if crazy:
+        text += f"\n\n<b>🧠 {crazy}</b>"
     if was_reset:
         text += f"\n\n<b>🔄 {profile.display_name} — ТЫ ОБНУЛИРОВАН !!!</b>"
     await message.answer(text, parse_mode="HTML")
-    if was_reset:
+    if was_reset or crazy:
         try:
             sset = await bot.get_sticker_set("likvidacia_blcktlk")
             if sset.stickers:

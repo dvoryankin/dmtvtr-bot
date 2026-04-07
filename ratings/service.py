@@ -29,6 +29,35 @@ def _display_name_from_row(row: UserRow) -> str:
     return " ".join(parts) if parts else str(row.user_id)
 
 
+_CRAZY_TEXTS = [
+    "Внимание! Ваш рейтинг был замечен спецслужбами 7 стран",
+    "Ваш социальный кредит пересчитан. Слава Партии",
+    "Рейтинговая комиссия ООН выражает вам благодарность",
+    "Ваш рейтинг виден из космоса. NASA подтверждает",
+    "По данным разведки, ваш рейтинг влияет на курс биткоина",
+    "Пентагон засекретил ваш рейтинг. Уровень допуска: COSMIC TOP SECRET",
+    "Ваш рейтинг был упомянут в пророчествах Нострадамуса",
+    "Совет старейшин одобряет ваш рейтинговый путь",
+    "Рептилоиды с Нибиру следят за вашим рейтингом",
+    "Ваш рейтинг нарушает законы термодинамики",
+    "Илон Маск хочет купить ваш рейтинг за 44 миллиарда",
+    "Квантовый компьютер Google не смог предсказать ваш рейтинг",
+    "ФСБ открыло дело по факту вашего рейтинга",
+    "Масоны включили вас в список избранных по рейтингу",
+    "Ваш рейтинг зарегистрирован в Книге рекордов Гиннесса (отдел паранормального)",
+    "Шаманы Тувы провели обряд на ваш рейтинг",
+    "Матрица дала сбой при обработке вашего рейтинга",
+    "Британские учёные доказали: ваш рейтинг лечит депрессию",
+    "Ваш рейтинг запрещён в 14 странах",
+    "По вашему рейтингу защитили кандидатскую диссертацию",
+    "Нейросеть отказалась анализировать ваш рейтинг. Причина: страх",
+    "Ваш рейтинг вызвал раскол в Ватикане",
+    "Древние свитки предсказывали именно этот рейтинг",
+    "МВФ пересмотрел прогноз мировой экономики из-за вашего рейтинга",
+    "Ваш рейтинг — причина аномалий на Бермудском треугольнике",
+]
+
+
 class RatingService:
     def __init__(
         self,
@@ -42,6 +71,8 @@ class RatingService:
         self._vote_cooldown_seconds = vote_cooldown_seconds
         self._activity_points_per_award = activity_points_per_award
         self._activity_cooldown_seconds = activity_cooldown_seconds
+        self._vote_counter: int = 0
+        self._next_crazy: int = random.randint(15, 25)
 
     def init_db(self) -> None:
         self._storage.init_db()
@@ -145,23 +176,31 @@ class RatingService:
             return True, 0
         return False, self._vote_cooldown_seconds - elapsed
 
+    def _check_crazy(self) -> str | None:
+        self._vote_counter += 1
+        if self._vote_counter >= self._next_crazy:
+            self._vote_counter = 0
+            self._next_crazy = random.randint(15, 25)
+            return random.choice(_CRAZY_TEXTS)
+        return None
+
     async def vote_plus_one(
         self,
         *,
         chat_id: int,
         from_user: User,
         to_user: User,
-    ) -> tuple[bool, int | None, int | None, int | None, bool]:
-        """Return (ok, new_rating, retry_after_seconds, delta, was_reset)."""
+    ) -> tuple[bool, int | None, int | None, int | None, bool, str | None]:
+        """Return (ok, new_rating, retry_after_seconds, delta, was_reset, crazy_text)."""
         is_pchellovod = (from_user.username or "").lower() == "pchellovod"
         if from_user.id == to_user.id and not is_pchellovod:
-            return False, None, None, None, False
+            return False, None, None, None, False, None
 
         ok, retry_after = await self.can_vote(
             chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
         )
         if not ok:
-            return False, None, retry_after, None, False
+            return False, None, retry_after, None, False, None
 
         await self.touch_user(from_user)
         if from_user.id != to_user.id:
@@ -179,7 +218,8 @@ class RatingService:
             ts=now_ts,
         )
         new_rating, was_reset = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=delta)
-        return True, new_rating, None, delta, was_reset
+        crazy = self._check_crazy()
+        return True, new_rating, None, delta, was_reset, crazy
 
     async def vote_minus_one(
         self,
@@ -187,17 +227,17 @@ class RatingService:
         chat_id: int,
         from_user: User,
         to_user: User,
-    ) -> tuple[bool, int | None, int | None, int | None, bool]:
-        """Return (ok, new_rating, retry_after_seconds, delta, was_reset)."""
+    ) -> tuple[bool, int | None, int | None, int | None, bool, str | None]:
+        """Return (ok, new_rating, retry_after_seconds, delta, was_reset, crazy_text)."""
         is_pchellovod = (from_user.username or "").lower() == "pchellovod"
         if from_user.id == to_user.id and not is_pchellovod:
-            return False, None, None, None, False
+            return False, None, None, None, False, None
 
         ok, retry_after = await self.can_vote(
             chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
         )
         if not ok:
-            return False, None, retry_after, None, False
+            return False, None, retry_after, None, False, None
 
         await self.touch_user(from_user)
         if from_user.id != to_user.id:
@@ -215,7 +255,8 @@ class RatingService:
             ts=now_ts,
         )
         new_rating, was_reset = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=delta)
-        return True, new_rating, None, delta, was_reset
+        crazy = self._check_crazy()
+        return True, new_rating, None, delta, was_reset, crazy
 
     async def can_award_activity(self, *, chat_id: int, user_id: int) -> tuple[bool, int]:
         if self._activity_points_per_award <= 0:

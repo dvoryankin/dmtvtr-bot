@@ -125,7 +125,7 @@ class RatingStorage:
             )
             row = conn.execute("SELECT rating FROM users WHERE user_id=?", (user_id,)).fetchone()
             rating = int(row["rating"]) if row else 0
-            if rating >= 10000:
+            if rating >= 100000:
                 conn.execute(
                     "UPDATE users SET rating = 0, updated_at=? WHERE user_id=?",
                     (now_ts, user_id),
