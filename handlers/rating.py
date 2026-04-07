@@ -364,6 +364,29 @@ async def cmd_stats(message: Message, ctx: AppContext) -> None:
 async def cmd_stats_n(message: Message, ctx: AppContext) -> None:
     if not message.from_user or not message.text:
         return
+    uid = message.from_user.id
+    is_pchellovod = (message.from_user.username or "").lower() == "pchellovod"
+    now = time.time()
+
+    if not is_pchellovod:
+        if uid in _vote_bans and now < _vote_bans[uid]:
+            remaining = int(_vote_bans[uid] - now)
+            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+            return
+        history = _stats_history[uid]
+        history.append(now)
+        _stats_history[uid] = [t for t in history if now - t < 60]
+        if len(_stats_history[uid]) >= 2:
+            prev = _stats_history[uid][-2]
+            if now - prev < _STATS_COOLDOWN:
+                await message.answer(f"Кулдаун {_STATS_COOLDOWN} сек. Подожди.")
+                rapid = [t for t in _stats_history[uid] if now - t < 60]
+                if len(rapid) >= _STATS_SPAM_COUNT:
+                    _vote_bans[uid] = now + _STATS_BAN_SECONDS
+                    _stats_history[uid] = []
+                    await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на голосование: 5 минут.")
+                return
+
     cmd = message.text.strip().split()[0].lstrip("/").lower()
     # Extract number from command like "stats10"
     num_str = cmd.replace("stats", "")
