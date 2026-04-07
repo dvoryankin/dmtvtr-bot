@@ -214,7 +214,7 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         return
 
     to_user = message.reply_to_message.from_user
-    ok, new_rating, retry_after, delta = await ctx.rating.vote_plus_one(
+    ok, new_rating, retry_after, delta, was_reset = await ctx.rating.vote_plus_one(
         chat_id=message.chat.id,
         from_user=message.from_user,
         to_user=to_user,
@@ -234,7 +234,10 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
 
     profile = await ctx.rating.profile(user=to_user)
     sign = f"+{delta}" if delta >= 0 else str(delta)
-    await message.answer(f"{sign} {profile.display_name} → {new_rating} ({profile.badge})")
+    text = f"{sign} {profile.display_name} → {new_rating} ({profile.badge})"
+    if was_reset:
+        text += f"\n\n<b>🔄 {profile.display_name} — ТЫ ОБНУЛИРОВАН !!!</b>"
+    await message.answer(text, parse_mode="HTML")
 
     # If this is a supergroup and both are admins, try to reflect badge as Telegram admin title.
     if message.chat.type in {"group", "supergroup"}:
@@ -384,7 +387,7 @@ async def cmd_award_badge(message: Message, bot: Bot, ctx: AppContext) -> None:
     p_before = await ctx.rating.profile(user=target)
     if p_before.rating < badge.threshold:
         delta = badge.threshold - p_before.rating
-        new_rating = await ctx.rating.add_points(user=target, delta=delta)
+        new_rating, _ = await ctx.rating.add_points(user=target, delta=delta)
         logging.info("Awarded %s points to %s (new=%s)", delta, target.id, new_rating)
 
     p_after = await ctx.rating.profile(user=target)

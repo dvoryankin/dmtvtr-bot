@@ -115,7 +115,8 @@ class RatingStorage:
                 (user_id, username, first_name, last_name, now_ts, now_ts),
             )
 
-    def add_points(self, *, user_id: int, delta: int, now_ts: int | None = None) -> int:
+    def add_points(self, *, user_id: int, delta: int, now_ts: int | None = None) -> tuple[int, bool]:
+        """Return (new_rating, was_reset)."""
         now_ts = int(time.time()) if now_ts is None else now_ts
         with self._connect() as conn:
             conn.execute(
@@ -123,7 +124,14 @@ class RatingStorage:
                 (delta, now_ts, user_id),
             )
             row = conn.execute("SELECT rating FROM users WHERE user_id=?", (user_id,)).fetchone()
-            return int(row["rating"]) if row else 0
+            rating = int(row["rating"]) if row else 0
+            if rating >= 10000:
+                conn.execute(
+                    "UPDATE users SET rating = 0, updated_at=? WHERE user_id=?",
+                    (now_ts, user_id),
+                )
+                return 0, True
+            return rating, False
 
     def get_user(self, *, user_id: int) -> UserRow | None:
         with self._connect() as conn:
