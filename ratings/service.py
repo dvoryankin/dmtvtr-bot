@@ -393,10 +393,13 @@ class RatingService:
             self._storage.add_points, user_id=actual_target_id, delta=delta
         )
 
-        # --- POST-VOTE EVENTS ---
+        # --- POST-VOTE EVENTS (max 2) ---
+        _max_events = 2
+
         def _ev(name: str, text: str):
-            events.append(text)
             self._event_stats[name] += 1
+            if len(events) < _max_events:
+                events.append(text)
 
         # Process pending credits
         credits_to_process = self._pending_credits.pop(to_user.id, [])
@@ -1210,15 +1213,23 @@ class RatingService:
         if was_reset and reset_msg:
             _ev("reset", f"<b>{reset_msg}</b>")
 
-        # Stats & xuan sticker counter
+        # Stats & sticker choice (only one pack per vote)
         self._stats["total_votes"] += 1
         event_count = len(events)
         self._event_total += event_count
-        send_xuan = event_count > 0 and self._event_total % 10 < event_count
 
         # Crazy text
         crazy = self._check_crazy()
-        send_sticker = was_reset or crazy is not None or event_count > 0
+        has_extras = was_reset or crazy is not None or event_count > 0
+
+        # Pick one sticker pack randomly, or none
+        send_sticker = False
+        send_xuan = False
+        if has_extras:
+            if self._event_total % 10 < max(event_count, 1):
+                send_xuan = True
+            else:
+                send_sticker = True
 
         return VoteResult(
             ok=True,
