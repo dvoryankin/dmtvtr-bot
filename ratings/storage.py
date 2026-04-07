@@ -212,6 +212,62 @@ class RatingStorage:
             cur = conn.execute("UPDATE users SET rating = rating + ?", (delta,))
             return cur.rowcount
 
+    def set_rating(self, *, user_id: int, rating: int) -> None:
+        now_ts = int(time.time())
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET rating = ?, updated_at = ? WHERE user_id = ?", (rating, now_ts, user_id))
+
+    def get_bottom_users(self, *, limit: int = 1) -> list[UserRow]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT user_id, username, first_name, last_name, rating FROM users ORDER BY rating ASC, updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [UserRow(user_id=int(r["user_id"]), username=r["username"], first_name=r["first_name"], last_name=r["last_name"], rating=int(r["rating"])) for r in rows]
+
+    def get_random_users(self, *, count: int, exclude_id: int | None = None) -> list[UserRow]:
+        with self._connect() as conn:
+            if exclude_id is not None:
+                rows = conn.execute(
+                    "SELECT user_id, username, first_name, last_name, rating FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT ?",
+                    (exclude_id, count),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT user_id, username, first_name, last_name, rating FROM users ORDER BY RANDOM() LIMIT ?",
+                    (count,),
+                ).fetchall()
+        return [UserRow(user_id=int(r["user_id"]), username=r["username"], first_name=r["first_name"], last_name=r["last_name"], rating=int(r["rating"])) for r in rows]
+
+    def get_nearest_rating_user(self, *, rating: int, exclude_id: int) -> UserRow | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT user_id, username, first_name, last_name, rating FROM users WHERE user_id != ? ORDER BY ABS(rating - ?) ASC LIMIT 1",
+                (exclude_id, rating),
+            ).fetchone()
+            if not row:
+                return None
+            return UserRow(user_id=int(row["user_id"]), username=row["username"], first_name=row["first_name"], last_name=row["last_name"], rating=int(row["rating"]))
+
+    def get_average_rating(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COALESCE(AVG(rating), 0) AS avg_r FROM users").fetchone()
+            return int(row["avg_r"])
+
+    def get_user_count(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(1) AS c FROM users").fetchone()
+            return int(row["c"])
+
+    def swap_ratings(self, *, uid1: int, uid2: int) -> None:
+        now_ts = int(time.time())
+        with self._connect() as conn:
+            r1 = conn.execute("SELECT rating FROM users WHERE user_id=?", (uid1,)).fetchone()
+            r2 = conn.execute("SELECT rating FROM users WHERE user_id=?", (uid2,)).fetchone()
+            if r1 and r2:
+                conn.execute("UPDATE users SET rating=?, updated_at=? WHERE user_id=?", (int(r2["rating"]), now_ts, uid1))
+                conn.execute("UPDATE users SET rating=?, updated_at=? WHERE user_id=?", (int(r1["rating"]), now_ts, uid2))
+
     def last_vote_ts(self, *, chat_id: int, from_user_id: int, to_user_id: int) -> int | None:
         with self._connect() as conn:
             row = conn.execute(

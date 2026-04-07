@@ -125,8 +125,12 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     if vr.ok:
                         profile = await self._ctx.rating.profile(user=to_user)
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        sign = f"+{vr.delta}" if vr.delta >= 0 else str(vr.delta)
-                        text = f"{sign} {target} → {vr.new_rating} ({profile.badge})"
+                        shown_delta = vr.display_delta if vr.display_delta is not None else vr.delta
+                        sign = f"+{shown_delta}" if shown_delta >= 0 else str(shown_delta)
+                        if vr.ghost:
+                            text = f"👻 {target} — ничего не произошло..."
+                        else:
+                            text = f"{sign} {target} → {vr.new_rating} ({profile.badge})"
                         if vr.delta == 55555:
                             text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {vr.new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
                             text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"

@@ -231,8 +231,12 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         return
 
     profile = await ctx.rating.profile(user=to_user)
-    sign = f"+{vr.delta}" if vr.delta >= 0 else str(vr.delta)
-    text = f"{sign} {profile.display_name} → {vr.new_rating} ({profile.badge})"
+    shown_delta = vr.display_delta if vr.display_delta is not None else vr.delta
+    sign = f"+{shown_delta}" if shown_delta >= 0 else str(shown_delta)
+    if vr.ghost:
+        text = f"👻 {profile.display_name} — ничего не произошло..."
+    else:
+        text = f"{sign} {profile.display_name} → {vr.new_rating} ({profile.badge})"
     if vr.delta == 55555:
         text += f"\n\n<b>🎰 {profile.display_name} — У ВАС РЕЙТИНГ {vr.new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
         text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
@@ -259,6 +263,58 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         )
         if not ok_title and err:
             logging.info("Title sync failed: %s", err)
+
+
+@router.message(Command("stats", "статистика", "стата"))
+async def cmd_stats(message: Message, ctx: AppContext) -> None:
+    stats = ctx.rating.get_stats()
+    user_count = await ctx.rating.get_user_count()
+    avg_rating = await ctx.rating.get_average_rating()
+    top3 = await ctx.rating.top(limit=3)
+
+    lines = [
+        "<b>📊 Статистика рейтинговой системы</b>",
+        "",
+        f"👥 Всего юзеров: <b>{user_count}</b>",
+        f"📈 Средний рейтинг: <b>{avg_rating}</b>",
+        f"🗳 Голосов с момента запуска: <b>{stats['total_votes']}</b>",
+        f"⚡ Мультипликатор x100: <b>{'ДА' if stats['next_multiplier'] else 'нет'}</b>",
+        f"🏛️ До налоговой: <b>{50 - stats['tax_counter']}</b> голосов",
+        f"💱 До деноминации: <b>{25 - stats['denom_counter']}</b> голосов",
+        f"🏦 Активных кредитов: <b>{stats['pending_credits']}</b>",
+    ]
+
+    if top3:
+        lines.append("")
+        lines.append("<b>🏆 Топ-3:</b>")
+        for i, p in enumerate(top3, 1):
+            lines.append(f"  {i}. {p.display_name} — {p.rating} ({p.badge})")
+
+    if stats["events"]:
+        lines.append("")
+        lines.append("<b>🎲 События (с запуска):</b>")
+        sorted_events = sorted(stats["events"].items(), key=lambda x: -x[1])
+        for name, count in sorted_events[:20]:
+            lines.append(f"  {name}: {count}")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("users", "юзеры", "участники"))
+async def cmd_users(message: Message, ctx: AppContext) -> None:
+    users = await ctx.rating.get_all_users(limit=50)
+    if not users:
+        await message.answer("Нет юзеров.")
+        return
+
+    lines = [f"<b>👥 Все участники ({len(users)}):</b>", ""]
+    for i, u in enumerate(users, 1):
+        lines.append(f"{i}. {u.display_name} — {u.rating} ({u.badge})")
+
+    text = "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+    await message.answer(text, parse_mode="HTML")
 
 
 @router.message(Command("title", "титул", "лычка"))
