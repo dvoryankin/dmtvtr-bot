@@ -180,6 +180,45 @@ class RatingStorage:
             for r in rows
         ]
 
+    def top_by_chat(self, *, chat_id: int, limit: int) -> list[UserRow]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT u.user_id, u.username, u.first_name, u.last_name, u.rating
+                FROM users u
+                WHERE u.user_id IN (
+                    SELECT from_user_id FROM votes WHERE chat_id = ?
+                    UNION
+                    SELECT to_user_id FROM votes WHERE chat_id = ?
+                    UNION
+                    SELECT user_id FROM activity WHERE chat_id = ?
+                )
+                ORDER BY u.rating DESC, u.updated_at ASC
+                LIMIT ?
+                """,
+                (chat_id, chat_id, chat_id, limit),
+            ).fetchall()
+        return [
+            UserRow(user_id=int(r["user_id"]), username=r["username"], first_name=r["first_name"], last_name=r["last_name"], rating=int(r["rating"]))
+            for r in rows
+        ]
+
+    def user_count_by_chat(self, *, chat_id: int) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(DISTINCT uid) AS c FROM (
+                    SELECT from_user_id AS uid FROM votes WHERE chat_id = ?
+                    UNION
+                    SELECT to_user_id AS uid FROM votes WHERE chat_id = ?
+                    UNION
+                    SELECT user_id AS uid FROM activity WHERE chat_id = ?
+                )
+                """,
+                (chat_id, chat_id, chat_id),
+            ).fetchone()
+            return int(row["c"]) if row else 0
+
     def get_user_rating(self, *, user_id: int) -> int:
         with self._connect() as conn:
             row = conn.execute("SELECT rating FROM users WHERE user_id=?", (user_id,)).fetchone()

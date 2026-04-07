@@ -188,7 +188,7 @@ async def cmd_top(message: Message, ctx: AppContext) -> None:
 
     limit = max(1, min(limit, 50))
 
-    top = await ctx.rating.top(limit=limit)
+    top = await ctx.rating.top(chat_id=message.chat.id, limit=limit)
     if not top:
         await message.answer("Пока пусто. Начни пользоваться ботом или поставь кому-нибудь /plus.")
         return
@@ -275,9 +275,9 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
 @router.message(Command("stats", "статистика", "стата"))
 async def cmd_stats(message: Message, ctx: AppContext) -> None:
     stats = ctx.rating.get_stats()
-    user_count = await ctx.rating.get_user_count()
+    user_count = await ctx.rating.get_user_count(chat_id=message.chat.id)
     avg_rating = await ctx.rating.get_average_rating()
-    top3 = await ctx.rating.top(limit=3)
+    top3 = await ctx.rating.top(chat_id=message.chat.id, limit=3)
 
     lines = [
         "<b>📊 Статистика рейтинговой системы</b>",
@@ -309,7 +309,7 @@ async def cmd_stats(message: Message, ctx: AppContext) -> None:
 
 @router.message(Command("users", "юзеры", "участники"))
 async def cmd_users(message: Message, ctx: AppContext) -> None:
-    users = await ctx.rating.get_all_users(limit=50)
+    users = await ctx.rating.get_all_users(chat_id=message.chat.id, limit=50)
     if not users:
         await message.answer("Нет юзеров.")
         return

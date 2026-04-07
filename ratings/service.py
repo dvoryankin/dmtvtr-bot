@@ -226,14 +226,19 @@ class RatingService:
             "denom_counter": self._denom_counter,
         }
 
-    async def get_user_count(self) -> int:
+    async def get_user_count(self, *, chat_id: int | None = None) -> int:
+        if chat_id is not None:
+            return await run_in_thread(self._storage.user_count_by_chat, chat_id=chat_id)
         return await run_in_thread(self._storage.get_user_count)
 
     async def get_average_rating(self) -> int:
         return await run_in_thread(self._storage.get_average_rating)
 
-    async def get_all_users(self, *, limit: int = 1000) -> list[Profile]:
-        rows = await run_in_thread(self._storage.top, limit=limit)
+    async def get_all_users(self, *, chat_id: int | None = None, limit: int = 1000) -> list[Profile]:
+        if chat_id is not None:
+            rows = await run_in_thread(self._storage.top_by_chat, chat_id=chat_id, limit=limit)
+        else:
+            rows = await run_in_thread(self._storage.top, limit=limit)
         out: list[Profile] = []
         for r in rows:
             b = badge_for_rating(r.rating)
@@ -247,8 +252,11 @@ class RatingService:
             ))
         return out
 
-    async def top(self, *, limit: int = 10) -> list[Profile]:
-        rows = await run_in_thread(self._storage.top, limit=limit)
+    async def top(self, *, chat_id: int | None = None, limit: int = 10) -> list[Profile]:
+        if chat_id is not None:
+            rows = await run_in_thread(self._storage.top_by_chat, chat_id=chat_id, limit=limit)
+        else:
+            rows = await run_in_thread(self._storage.top, limit=limit)
         out: list[Profile] = []
         for r in rows:
             kpd = await self.kpd_percent(user_id=r.user_id)
