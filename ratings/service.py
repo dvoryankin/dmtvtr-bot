@@ -41,7 +41,7 @@ class VoteResult:
 
 def _display_name_from_row(row: UserRow) -> str:
     if row.username:
-        return f"@{row.username}"
+        return f"{row.username}"
     parts = [p for p in (row.first_name, row.last_name) if p]
     return " ".join(parts) if parts else str(row.user_id)
 
@@ -206,7 +206,7 @@ class RatingService:
         if nxt is not None:
             hint = f"До лычки {nxt.icon} {nxt.name}: {nxt.threshold - rating}"
 
-        display_name = _display_name_from_row(row) if row else (f"@{user.username}" if user.username else user.full_name)
+        display_name = _display_name_from_row(row) if row else (f"{user.username}" if user.username else user.full_name)
         return Profile(
             user_id=user.id,
             display_name=display_name,
@@ -359,7 +359,7 @@ class RatingService:
 
         # --- VOTE REDIRECTION ---
         actual_target_id = to_user.id
-        target_name = f"@{to_user.username}" if to_user.username else to_user.full_name
+        target_name = f"{to_user.username}" if to_user.username else to_user.full_name
 
         # Santa (1/8) — vote goes to random user
         if not missed and random.random() < 0.125:
@@ -422,7 +422,7 @@ class RatingService:
         # Karma (1/10) — voter also gets the same delta
         if not _full() and not missed and random.random() < 0.1:
             voter_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=delta)
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             sign = f"+{delta}" if delta >= 0 else str(delta)
             _ev("karma", f"☯️ <b>КАРМА!</b> {vname} тоже получает {sign} → {voter_new}")
 
@@ -576,7 +576,7 @@ class RatingService:
 
         # 7. Russian roulette (1/15) — 1/6 zero voter, 5/6 voter gets x6
         if not _full() and random.random() <0.066:
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             if not _full() and random.random() <1/6:
                 await run_in_thread(self._storage.set_rating, user_id=from_user.id, rating=0)
                 _ev("roulette_lose", f"🎲 <b>РУССКАЯ РУЛЕТКА!</b> {vname} проиграл — рейтинг обнулён!")
@@ -598,7 +598,7 @@ class RatingService:
 
         # 9. Slowdown (1/20) — voter gets -500 penalty
         if not _full() and random.random() <0.05:
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             slow_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-500)
             _ev("slowdown", f"🐌 <b>ЗАМЕДЛЕНИЕ!</b> {vname} получает штраф -500 → {slow_new}")
 
@@ -628,7 +628,7 @@ class RatingService:
             steal = abs(tr) // 2 if tr != 0 else 500
             await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-steal)
             pirate_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=steal)
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             _ev("piracy", f"🏴‍☠️ <b>ПИРАТСТВО!</b> {vname} украл {steal} рейтинга у {target_name} → {pirate_new}")
 
         # 13. Default (1/25) — max rating user drops to average
@@ -729,7 +729,7 @@ class RatingService:
             vr_rating = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
             bonus = abs(vr_rating) * 4 if vr_rating != 0 else 2000
             stak_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=bonus)
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             _ev("stakhanovets", f"🔨 <b>СТАХАНОВЕЦ!</b> {vname} перевыполнил план! Рейтинг x5 → {stak_new}")
 
         # 3. Госплан (1/25) — все рейтинги = среднее
@@ -946,7 +946,7 @@ class RatingService:
         if not _full() and random.random() <0.066:
             factory_d = abs(delta) * 10 if delta != 0 else 5000
             fac_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=factory_d)
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             if actual_target_id == to_user.id:
                 new_rating = fac_new
             _ev("factory", f"🏭 <b>ЗАВОД!</b> {vname} перевыполнил норму! {target_name} получает +{factory_d} → {fac_new}")
@@ -1170,7 +1170,7 @@ class RatingService:
 
         # 49. КГБ (1/15) — голосующий теряет 25% рейтинга (слежка)
         if not _full() and random.random() <0.066:
-            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            vname = f"{from_user.username}" if from_user.username else from_user.full_name
             v_r = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
             loss = abs(v_r) * 25 // 100 if v_r else 250
             kgb_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-loss)

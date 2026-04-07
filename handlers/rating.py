@@ -240,7 +240,7 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
     )
     if not vr.ok:
         if vr.retry_after is not None:
-            target = f"@{to_user.username}" if to_user.username else to_user.full_name
+            target = f"{to_user.username}" if to_user.username else to_user.full_name
             await message.answer(
                 "Слишком часто: ты уже ставил /plus этому человеку в этом чате.\n"
                 f"Кому: {target}\n"

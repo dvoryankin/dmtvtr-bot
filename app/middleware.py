@@ -125,7 +125,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     bot: Bot | None = data.get("bot")
                     if vr.ok:
                         profile = await self._ctx.rating.profile(user=to_user)
-                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        target = f"{to_user.username}" if to_user.username else to_user.full_name
                         shown_delta = vr.display_delta if vr.display_delta is not None else vr.delta
                         sign = f"+{shown_delta}" if shown_delta >= 0 else str(shown_delta)
                         if vr.ghost:
@@ -167,7 +167,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                             except Exception:
                                 pass
                     elif vr.retry_after is not None:
-                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        target = f"{to_user.username}" if to_user.username else to_user.full_name
                         await message.reply(
                             f"Кулдаун: повторить можно через {_format_seconds(vr.retry_after)}.\n"
                             f"Кому: {target}"
