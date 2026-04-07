@@ -140,13 +140,14 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     if ok:
                         profile = await self._ctx.rating.profile(user=to_user)
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        await message.reply(f"+{_delta} {target} → {_new_rating} ({profile.badge})")
+                        sign = f"+{_delta}" if _delta >= 0 else str(_delta)
+                        await message.reply(f"{sign} {target} → {_new_rating} ({profile.badge})")
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(
                                     chat_id=message.chat.id,
                                     message_id=praised_msg_id,
-                                    reaction=[ReactionTypeEmoji(emoji="👎")],
+                                    reaction=[ReactionTypeEmoji(emoji="👎" if _delta < 0 else "👍")],
                                 )
                             except Exception:
                                 pass
@@ -189,13 +190,14 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     if ok:
                         profile = await self._ctx.rating.profile(user=to_user)
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        await message.reply(f"+{_delta} {target} → {_new_rating} ({profile.badge})")
+                        sign = f"+{_delta}" if _delta >= 0 else str(_delta)
+                        await message.reply(f"{sign} {target} → {_new_rating} ({profile.badge})")
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(
                                     chat_id=message.chat.id,
                                     message_id=praised_msg_id,
-                                    reaction=[ReactionTypeEmoji(emoji="👍")],
+                                    reaction=[ReactionTypeEmoji(emoji="👎" if _delta < 0 else "👍")],
                                 )
                             except Exception:
                                 pass

@@ -165,7 +165,7 @@ class RatingService:
         await self.touch_user(from_user)
         await self.touch_user(to_user)
 
-        delta = random.randint(1, 1000)
+        delta = random.randint(1, 1000) * random.choice((-1, 1))
         now_ts = int(time.time())
         await run_in_thread(
             self._storage.record_vote,
@@ -197,7 +197,7 @@ class RatingService:
         await self.touch_user(from_user)
         await self.touch_user(to_user)
 
-        delta = random.randint(1, 1000)
+        delta = random.randint(1, 1000) * random.choice((-1, 1))
         now_ts = int(time.time())
         await run_in_thread(
             self._storage.record_vote,

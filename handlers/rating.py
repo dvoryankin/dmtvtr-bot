@@ -233,7 +233,8 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         return
 
     profile = await ctx.rating.profile(user=to_user)
-    await message.answer(f"+{delta} {profile.display_name} → {new_rating} ({profile.badge})")
+    sign = f"+{delta}" if delta >= 0 else str(delta)
+    await message.answer(f"{sign} {profile.display_name} → {new_rating} ({profile.badge})")
 
     # If this is a supergroup and both are admins, try to reflect badge as Telegram admin title.
     if message.chat.type in {"group", "supergroup"}:
