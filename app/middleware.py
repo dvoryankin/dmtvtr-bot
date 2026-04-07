@@ -143,6 +143,8 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
                         sign = f"+{_delta}" if _delta >= 0 else str(_delta)
                         text = f"{sign} {target} → {_new_rating} ({profile.badge})"
+                        if _delta == 55555:
+                            text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
@@ -204,6 +206,8 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
                         sign = f"+{_delta}" if _delta >= 0 else str(_delta)
                         text = f"{sign} {target} → {_new_rating} ({profile.badge})"
+                        if _delta == 55555:
+                            text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")

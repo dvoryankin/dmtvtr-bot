@@ -235,6 +235,8 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
     profile = await ctx.rating.profile(user=to_user)
     sign = f"+{delta}" if delta >= 0 else str(delta)
     text = f"{sign} {profile.display_name} → {new_rating} ({profile.badge})"
+    if delta == 55555:
+        text += f"\n\n<b>🎰 {profile.display_name} — У ВАС РЕЙТИНГ {new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
     if was_reset:
         text += f"\n\n<b>🔄 {profile.display_name} — ТЫ ОБНУЛИРОВАН !!!</b>"
     await message.answer(text, parse_mode="HTML")
