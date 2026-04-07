@@ -133,20 +133,6 @@ class RatingStorage:
             )
             row = conn.execute("SELECT rating FROM users WHERE user_id=?", (user_id,)).fetchone()
             rating = int(row["rating"]) if row else 0
-            # 2 000 000 — полное обнуление
-            if rating >= 2_000_000:
-                conn.execute("UPDATE users SET rating = 0, updated_at=? WHERE user_id=?", (now_ts, user_id))
-                return 0, True, "💀 ПОЛНОЕ ОБНУЛЕНИЕ! 2 000 000 достигнут!"
-            # 1 500 000 (±10000) — откат на 750k
-            if 1_490_000 <= rating <= 1_510_000:
-                new_r = rating - 750_000
-                conn.execute("UPDATE users SET rating = ?, updated_at=? WHERE user_id=?", (new_r, now_ts, user_id))
-                return new_r, True, f"⚠️ ЧАСТИЧНОЕ ОБНУЛЕНИЕ! 1.5M зона — откат на 750k!"
-            # 1 000 000 (±10000) — откат на 500k
-            if 990_000 <= rating <= 1_010_000:
-                new_r = rating - 500_000
-                conn.execute("UPDATE users SET rating = ?, updated_at=? WHERE user_id=?", (new_r, now_ts, user_id))
-                return new_r, True, f"⚠️ ЧАСТИЧНОЕ ОБНУЛЕНИЕ! 1M зона — откат на 500k!"
             return rating, False, None
 
     def get_user(self, *, user_id: int) -> UserRow | None:
