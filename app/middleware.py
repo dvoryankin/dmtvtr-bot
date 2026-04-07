@@ -145,6 +145,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         text = f"{sign} {target} → {_new_rating} ({profile.badge})"
                         if _delta == 55555:
                             text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
+                            text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
@@ -208,6 +209,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         text = f"{sign} {target} → {_new_rating} ({profile.badge})"
                         if _delta == 55555:
                             text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
+                            text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
