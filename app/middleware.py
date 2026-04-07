@@ -130,17 +130,17 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         "Reply-minus: from=%s to=%s text=%r msg=%s",
                         message.from_user.id, to_user.id, maybe_text, praised_msg_id,
                     )
-                    ok, _new_rating, _retry_after = await self._ctx.rating.vote_minus_one(
+                    ok, _new_rating, _retry_after, _delta = await self._ctx.rating.vote_minus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
                     )
-                    logging.info("Reply-minus result: ok=%s new_rating=%s retry=%s", ok, _new_rating, _retry_after)
+                    logging.info("Reply-minus result: ok=%s new_rating=%s retry=%s delta=%s", ok, _new_rating, _retry_after, _delta)
                     bot: Bot | None = data.get("bot")
                     if ok:
                         profile = await self._ctx.rating.profile(user=to_user)
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        await message.reply(f"-1 {target} → {_new_rating} ({profile.badge})")
+                        await message.reply(f"+{_delta} {target} → {_new_rating} ({profile.badge})")
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(
@@ -176,20 +176,20 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         praised_msg_id,
                         message.message_id,
                     )
-                    ok, _new_rating, _retry_after = await self._ctx.rating.vote_plus_one(
+                    ok, _new_rating, _retry_after, _delta = await self._ctx.rating.vote_plus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
                     )
                     logging.info(
-                        "Reply-plus result: ok=%s new_rating=%s retry=%s",
-                        ok, _new_rating, _retry_after,
+                        "Reply-plus result: ok=%s new_rating=%s retry=%s delta=%s",
+                        ok, _new_rating, _retry_after, _delta,
                     )
                     bot: Bot | None = data.get("bot")
                     if ok:
                         profile = await self._ctx.rating.profile(user=to_user)
                         target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        await message.reply(f"+1 {target} → {_new_rating} ({profile.badge})")
+                        await message.reply(f"+{_delta} {target} → {_new_rating} ({profile.badge})")
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(

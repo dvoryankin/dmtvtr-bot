@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -150,20 +151,21 @@ class RatingService:
         chat_id: int,
         from_user: User,
         to_user: User,
-    ) -> tuple[bool, int | None, int | None]:
-        """Return (ok, new_rating, retry_after_seconds)."""
+    ) -> tuple[bool, int | None, int | None, int | None]:
+        """Return (ok, new_rating, retry_after_seconds, delta)."""
         if from_user.id == to_user.id:
-            return False, None, None
+            return False, None, None, None
 
         ok, retry_after = await self.can_vote(
             chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
         )
         if not ok:
-            return False, None, retry_after
+            return False, None, retry_after, None
 
         await self.touch_user(from_user)
         await self.touch_user(to_user)
 
+        delta = random.randint(1, 1000)
         now_ts = int(time.time())
         await run_in_thread(
             self._storage.record_vote,
@@ -172,8 +174,8 @@ class RatingService:
             to_user_id=to_user.id,
             ts=now_ts,
         )
-        new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=1)
-        return True, new_rating, None
+        new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=delta)
+        return True, new_rating, None, delta
 
     async def vote_minus_one(
         self,
@@ -181,20 +183,21 @@ class RatingService:
         chat_id: int,
         from_user: User,
         to_user: User,
-    ) -> tuple[bool, int | None, int | None]:
-        """Return (ok, new_rating, retry_after_seconds)."""
+    ) -> tuple[bool, int | None, int | None, int | None]:
+        """Return (ok, new_rating, retry_after_seconds, delta)."""
         if from_user.id == to_user.id:
-            return False, None, None
+            return False, None, None, None
 
         ok, retry_after = await self.can_vote(
             chat_id=chat_id, from_user_id=from_user.id, to_user_id=to_user.id
         )
         if not ok:
-            return False, None, retry_after
+            return False, None, retry_after, None
 
         await self.touch_user(from_user)
         await self.touch_user(to_user)
 
+        delta = random.randint(1, 1000)
         now_ts = int(time.time())
         await run_in_thread(
             self._storage.record_vote,
@@ -203,8 +206,8 @@ class RatingService:
             to_user_id=to_user.id,
             ts=now_ts,
         )
-        new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-1)
-        return True, new_rating, None
+        new_rating = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=delta)
+        return True, new_rating, None, delta
 
     async def can_award_activity(self, *, chat_id: int, user_id: int) -> tuple[bool, int]:
         if self._activity_points_per_award <= 0:
