@@ -214,36 +214,36 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         return
 
     to_user = message.reply_to_message.from_user
-    ok, new_rating, retry_after, delta, was_reset, crazy = await ctx.rating.vote_plus_one(
+    vr = await ctx.rating.vote_plus_one(
         chat_id=message.chat.id,
         from_user=message.from_user,
         to_user=to_user,
     )
-    if not ok:
-        if retry_after is None:
-            await message.answer("Нельзя поставить /plus самому себе.")
-        else:
+    if not vr.ok:
+        if vr.retry_after is not None:
             target = f"@{to_user.username}" if to_user.username else to_user.full_name
             await message.answer(
                 "Слишком часто: ты уже ставил /plus этому человеку в этом чате.\n"
                 f"Кому: {target}\n"
-                f"Повторить можно через {_format_seconds(retry_after)}.\n\n"
+                f"Повторить можно через {_format_seconds(vr.retry_after)}.\n\n"
                 "Другие участники могут ставить /plus ему без этого ограничения."
             )
         return
 
     profile = await ctx.rating.profile(user=to_user)
-    sign = f"+{delta}" if delta >= 0 else str(delta)
-    text = f"{sign} {profile.display_name} → {new_rating} ({profile.badge})"
-    if delta == 55555:
-        text += f"\n\n<b>🎰 {profile.display_name} — У ВАС РЕЙТИНГ {new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
+    sign = f"+{vr.delta}" if vr.delta >= 0 else str(vr.delta)
+    text = f"{sign} {profile.display_name} → {vr.new_rating} ({profile.badge})"
+    if vr.delta == 55555:
+        text += f"\n\n<b>🎰 {profile.display_name} — У ВАС РЕЙТИНГ {vr.new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
         text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
-    if crazy:
-        text += f"\n\n<b>🧠 {crazy}</b>"
-    if was_reset:
+    if vr.crazy_text:
+        text += f"\n\n<b>🧠 {vr.crazy_text}</b>"
+    if vr.was_reset:
         text += f"\n\n<b>🔄 {profile.display_name} — ТЫ ОБНУЛИРОВАН !!!</b>"
+    for ev in vr.events:
+        text += f"\n\n{ev}"
     await message.answer(text, parse_mode="HTML")
-    if was_reset or crazy:
+    if vr.send_sticker:
         try:
             sset = await bot.get_sticker_set("likvidacia_blcktlk")
             if sset.stickers:

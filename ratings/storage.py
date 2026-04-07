@@ -172,6 +172,46 @@ class RatingStorage:
             for r in rows
         ]
 
+    def get_user_rating(self, *, user_id: int) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT rating FROM users WHERE user_id=?", (user_id,)).fetchone()
+            return int(row["rating"]) if row else 0
+
+    def get_random_user(self, *, exclude_id: int | None = None) -> UserRow | None:
+        with self._connect() as conn:
+            if exclude_id is not None:
+                row = conn.execute(
+                    "SELECT user_id, username, first_name, last_name, rating FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1",
+                    (exclude_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT user_id, username, first_name, last_name, rating FROM users ORDER BY RANDOM() LIMIT 1",
+                ).fetchone()
+            if not row:
+                return None
+            return UserRow(user_id=int(row["user_id"]), username=row["username"], first_name=row["first_name"], last_name=row["last_name"], rating=int(row["rating"]))
+
+    def halve_all_ratings(self) -> int:
+        with self._connect() as conn:
+            cur = conn.execute("UPDATE users SET rating = rating / 2 WHERE rating != 0")
+            return cur.rowcount
+
+    def double_all_ratings(self) -> int:
+        with self._connect() as conn:
+            cur = conn.execute("UPDATE users SET rating = rating * 2 WHERE rating != 0")
+            return cur.rowcount
+
+    def reset_negative_ratings(self) -> int:
+        with self._connect() as conn:
+            cur = conn.execute("UPDATE users SET rating = 0 WHERE rating < 0")
+            return cur.rowcount
+
+    def add_flat_to_all(self, *, delta: int) -> int:
+        with self._connect() as conn:
+            cur = conn.execute("UPDATE users SET rating = rating + ?", (delta,))
+            return cur.rowcount
+
     def last_vote_ts(self, *, chat_id: int, from_user_id: int, to_user_id: int) -> int | None:
         with self._connect() as conn:
             row = conn.execute(

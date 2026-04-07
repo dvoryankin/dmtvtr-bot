@@ -119,7 +119,49 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     message.reply_to_message.from_user.id if is_reply else None,
                 )
 
-                # Handle reply-minus (-1).
+                # Shared handler for vote results.
+                async def _handle_vote(vr, to_user, praised_msg_id, label: str):
+                    bot: Bot | None = data.get("bot")
+                    if vr.ok:
+                        profile = await self._ctx.rating.profile(user=to_user)
+                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        sign = f"+{vr.delta}" if vr.delta >= 0 else str(vr.delta)
+                        text = f"{sign} {target} → {vr.new_rating} ({profile.badge})"
+                        if vr.delta == 55555:
+                            text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {vr.new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
+                            text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
+                        if vr.crazy_text:
+                            text += f"\n\n<b>🧠 {vr.crazy_text}</b>"
+                        if vr.was_reset:
+                            text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
+                        for ev in vr.events:
+                            text += f"\n\n{ev}"
+                        await message.reply(text, parse_mode="HTML")
+                        if vr.send_sticker and bot is not None:
+                            try:
+                                sset = await bot.get_sticker_set("likvidacia_blcktlk")
+                                if sset.stickers:
+                                    sticker = random.choice(sset.stickers)
+                                    await message.answer_sticker(sticker.file_id)
+                            except Exception:
+                                pass
+                        if bot is not None:
+                            try:
+                                await bot.set_message_reaction(
+                                    chat_id=message.chat.id,
+                                    message_id=praised_msg_id,
+                                    reaction=[ReactionTypeEmoji(emoji="👎" if vr.delta < 0 else "👍")],
+                                )
+                            except Exception:
+                                pass
+                    elif vr.retry_after is not None:
+                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
+                        await message.reply(
+                            f"Кулдаун: повторить можно через {_format_seconds(vr.retry_after)}.\n"
+                            f"Кому: {target}"
+                        )
+
+                # Handle reply-minus.
                 if (
                     is_reply
                     and not message.reply_to_message.from_user.is_bot
@@ -127,130 +169,36 @@ class ActivityRatingMiddleware(BaseMiddleware):
                 ):
                     praised_msg_id = message.reply_to_message.message_id
                     to_user = message.reply_to_message.from_user
-                    logging.info(
-                        "Reply-minus: from=%s to=%s text=%r msg=%s",
-                        message.from_user.id, to_user.id, maybe_text, praised_msg_id,
-                    )
-                    ok, _new_rating, _retry_after, _delta, _was_reset, _crazy = await self._ctx.rating.vote_minus_one(
+                    vr = await self._ctx.rating.vote_minus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
                     )
-                    logging.info("Reply-minus result: ok=%s new_rating=%s retry=%s delta=%s reset=%s", ok, _new_rating, _retry_after, _delta, _was_reset)
-                    bot: Bot | None = data.get("bot")
-                    if ok:
-                        profile = await self._ctx.rating.profile(user=to_user)
-                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        sign = f"+{_delta}" if _delta >= 0 else str(_delta)
-                        text = f"{sign} {target} → {_new_rating} ({profile.badge})"
-                        if _delta == 55555:
-                            text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
-                            text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
-                        if _crazy:
-                            text += f"\n\n<b>🧠 {_crazy}</b>"
-                        if _was_reset:
-                            text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
-                        await message.reply(text, parse_mode="HTML")
-                        if (_was_reset or _crazy) and bot is not None:
-                            try:
-                                sset = await bot.get_sticker_set("likvidacia_blcktlk")
-                                if sset.stickers:
-                                    sticker = random.choice(sset.stickers)
-                                    await message.answer_sticker(sticker.file_id)
-                            except Exception:
-                                pass
-                        if bot is not None:
-                            try:
-                                await bot.set_message_reaction(
-                                    chat_id=message.chat.id,
-                                    message_id=praised_msg_id,
-                                    reaction=[ReactionTypeEmoji(emoji="👎" if _delta < 0 else "👍")],
-                                )
-                            except Exception:
-                                pass
-                    elif _retry_after is None:
-                        await message.reply("Нельзя минусить самого себя.")
-                    else:
-                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        await message.reply(
-                            f"Кулдаун: повторить можно через {_format_seconds(_retry_after)}.\n"
-                            f"Кому: {target}"
-                        )
+                    await _handle_vote(vr, to_user, praised_msg_id, "minus")
                     return
 
+                # Handle reply-plus.
                 if (
                     is_reply
                     and not message.reply_to_message.from_user.is_bot
                     and is_praise
                 ):
-                    # target = the ORIGINAL message (the one being praised).
                     praised_msg_id = message.reply_to_message.message_id
                     to_user = message.reply_to_message.from_user
-                    logging.info(
-                        "Reply-plus: from=%s to=%s text=%r praised_msg=%s reply_msg=%s",
-                        message.from_user.id,
-                        to_user.id,
-                        maybe_text,
-                        praised_msg_id,
-                        message.message_id,
-                    )
-                    ok, _new_rating, _retry_after, _delta, _was_reset, _crazy = await self._ctx.rating.vote_plus_one(
+                    vr = await self._ctx.rating.vote_plus_one(
                         chat_id=message.chat.id,
                         from_user=message.from_user,
                         to_user=to_user,
                     )
-                    logging.info(
-                        "Reply-plus result: ok=%s new_rating=%s retry=%s delta=%s reset=%s",
-                        ok, _new_rating, _retry_after, _delta, _was_reset,
-                    )
-                    bot: Bot | None = data.get("bot")
-                    if ok:
-                        profile = await self._ctx.rating.profile(user=to_user)
-                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        sign = f"+{_delta}" if _delta >= 0 else str(_delta)
-                        text = f"{sign} {target} → {_new_rating} ({profile.badge})"
-                        if _delta == 55555:
-                            text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {_new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
-                            text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
-                        if _crazy:
-                            text += f"\n\n<b>🧠 {_crazy}</b>"
-                        if _was_reset:
-                            text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
-                        await message.reply(text, parse_mode="HTML")
-                        if (_was_reset or _crazy) and bot is not None:
-                            try:
-                                sset = await bot.get_sticker_set("likvidacia_blcktlk")
-                                if sset.stickers:
-                                    sticker = random.choice(sset.stickers)
-                                    await message.answer_sticker(sticker.file_id)
-                            except Exception:
-                                pass
-                        if bot is not None:
-                            try:
-                                await bot.set_message_reaction(
-                                    chat_id=message.chat.id,
-                                    message_id=praised_msg_id,
-                                    reaction=[ReactionTypeEmoji(emoji="👎" if _delta < 0 else "👍")],
-                                )
-                            except Exception:
-                                pass
-                    elif _retry_after is None:
-                        await message.reply("Нельзя плюсить самого себя.")
-                    else:
-                        target = f"@{to_user.username}" if to_user.username else to_user.full_name
-                        await message.reply(
-                            f"Кулдаун: повторить можно через {_format_seconds(_retry_after)}.\n"
-                            f"Кому: {target}"
-                        )
-
-                    if ok:
-                        # Best-effort title sync for admins; ignore failures.
+                    await _handle_vote(vr, to_user, praised_msg_id, "plus")
+                    if vr.ok:
+                        bot: Bot | None = data.get("bot")
                         if bot is not None:
                             try:
                                 cm = await bot.get_chat_member(message.chat.id, to_user.id)
                                 if cm.status in {"administrator", "creator"}:
                                     kpd = await self._ctx.rating.kpd_percent(user_id=to_user.id)
-                                    badge = badge_for_rating(int(_new_rating or 0), kpd_percent=kpd)
+                                    badge = badge_for_rating(int(vr.new_rating or 0), kpd_percent=kpd)
                                     title_with_emoji = f"{badge.icon} {badge.name}"[:16]
                                     title_plain = f"{badge.name}"[:16]
                                     try:
