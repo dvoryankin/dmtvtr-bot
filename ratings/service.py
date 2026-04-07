@@ -973,6 +973,206 @@ class RatingService:
                     pnames.append(_display_name_from_row(u))
                 _ev("perestroika", f"🔄 <b>ПЕРЕСТРОЙКА!</b> Рейтинги перетасованы: {', '.join(pnames[:5])}...")
 
+        # === ЕЛЬЦИНСКО-ХРУЩЁВСКИЕ СОБЫТИЯ ===
+
+        # 31. Дефолт 98 (1/25) — все рейтинги делятся на 4
+        if random.random() < 0.04:
+            await run_in_thread(self._storage.halve_all_ratings)
+            cnt = await run_in_thread(self._storage.halve_all_ratings)
+            _ev("default98", f"📉 <b>ДЕФОЛТ 98!</b> Рейтинги обесценились в 4 раза! ({cnt} юзеров)")
+
+        # 32. Черномырдин (1/15) — хотели как лучше, получилось как всегда
+        if random.random() < 0.066:
+            intended = abs(delta) * 5 if delta else 2000
+            actual = -intended
+            ch_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=actual)
+            if actual_target_id == to_user.id:
+                new_rating = ch_new
+            _ev("chernomyrdin", f"🤦 <b>ЧЕРНОМЫРДИН:</b> хотели +{intended}, получилось {actual}! → {ch_new}")
+
+        # 33. Ельцин танцует (1/15) — все рейтинги рандомно прыгают ±30%
+        if random.random() < 0.066:
+            dancers = await run_in_thread(self._storage.get_random_users, count=5)
+            dparts = []
+            for u in dancers:
+                swing = random.randint(-30, 30) * u.rating // 100
+                dn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=swing)
+                dparts.append(f"{_display_name_from_row(u)} {swing:+d}")
+            if dparts:
+                _ev("yeltsin_dance", f"🕺 <b>ЕЛЬЦИН ТАНЦУЕТ!</b> Рейтинги пляшут: {', '.join(dparts)}")
+
+        # 34. Я устал, я ухожу (1/20) — топ-1 уходит в отставку, рейтинг → 0
+        if random.random() < 0.05:
+            top1 = await run_in_thread(self._storage.top, limit=1)
+            if top1 and top1[0].rating > 0:
+                old_r = top1[0].rating
+                await run_in_thread(self._storage.set_rating, user_id=top1[0].user_id, rating=0)
+                _ev("ya_ustal", f"😴 <b>Я УСТАЛ, Я УХОЖУ!</b> {_display_name_from_row(top1[0])} покидает пост! {old_r} → 0")
+
+        # 35. Хрущёв стучит ботинком (1/15) — случайный юзер получает удар ботинком (-1000)
+        if random.random() < 0.066:
+            victim = await run_in_thread(self._storage.get_random_user)
+            if victim:
+                shoe_new, *_ = await run_in_thread(self._storage.add_points, user_id=victim.user_id, delta=-1000)
+                _ev("khrushchev_shoe", f"👞 <b>ХРУЩЁВ СТУЧИТ БОТИНКОМ!</b> {_display_name_from_row(victim)} получает -1000 → {shoe_new}")
+
+        # 36. Кузькина мать (1/20) — цель получает рандом от -5000 до +5000
+        if random.random() < 0.05:
+            kuzma = random.randint(-5000, 5000)
+            kz_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=kuzma)
+            if actual_target_id == to_user.id:
+                new_rating = kz_new
+            _ev("kuzka_mother", f"💣 <b>КУЗЬКИНА МАТЬ!</b> {target_name} получает {kuzma:+d} → {kz_new}")
+
+        # 37. Оттепель (1/20) — все замороженные (рейтинг 0) получают +500
+        if random.random() < 0.05:
+            all_u = await run_in_thread(self._storage.get_random_users, count=50)
+            thawed = 0
+            for u in all_u:
+                if u.rating == 0:
+                    await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=500)
+                    thawed += 1
+            if thawed:
+                _ev("thaw", f"🌸 <b>ОТТЕПЕЛЬ!</b> {thawed} юзеров с нулевым рейтингом получили +500!")
+
+        # 38. Берия (1/25) — случайный юзер теряет всё и передаёт топ-1
+        if random.random() < 0.04:
+            victim = await run_in_thread(self._storage.get_random_user)
+            top1 = await run_in_thread(self._storage.top, limit=1)
+            if victim and top1 and victim.rating > 0 and victim.user_id != top1[0].user_id:
+                await run_in_thread(self._storage.set_rating, user_id=victim.user_id, rating=0)
+                await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=victim.rating)
+                _ev("beria", f"🕶️ <b>БЕРИЯ!</b> {_display_name_from_row(victim)} арестован! Рейтинг {victim.rating} конфискован в пользу {_display_name_from_row(top1[0])}")
+
+        # 39. Целина (1/15) — 3 юзера с минимальным рейтингом получают +2000
+        if random.random() < 0.066:
+            bottom3 = await run_in_thread(self._storage.get_bottom_users, limit=3)
+            cnames = []
+            for u in bottom3:
+                await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=2000)
+                cnames.append(_display_name_from_row(u))
+            if cnames:
+                _ev("tselina", f"🌾 <b>ЦЕЛИНА!</b> Поднимаем отстающих! +2000: {', '.join(cnames)}")
+
+        # 40. Застой (1/20) — все рейтинги замораживаются (округляются до ближайшей тысячи)
+        if random.random() < 0.05:
+            stag = await run_in_thread(self._storage.get_random_users, count=20)
+            cnt = 0
+            for u in stag:
+                rounded = round(u.rating / 1000) * 1000
+                if rounded != u.rating:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=rounded)
+                    cnt += 1
+            if cnt:
+                _ev("stagnation", f"😐 <b>ЗАСТОЙ!</b> {cnt} рейтингов округлены до тысяч. Стабильность!")
+
+        # 41. Приватизация (1/20) — топ-1 забирает 10% от каждого
+        if random.random() < 0.05:
+            top1 = await run_in_thread(self._storage.top, limit=1)
+            if top1:
+                priv_users = await run_in_thread(self._storage.get_random_users, count=10, exclude_id=top1[0].user_id)
+                total_taken = 0
+                for u in priv_users:
+                    if u.rating > 0:
+                        take = u.rating * 10 // 100
+                        await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-take)
+                        total_taken += take
+                if total_taken:
+                    pnew, *_ = await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=total_taken)
+                    _ev("privatization", f"💰 <b>ПРИВАТИЗАЦИЯ!</b> {_display_name_from_row(top1[0])} забрал {total_taken} у народа! → {pnew}")
+
+        # 42. Талоны (1/15) — все рейтинги > 5000 срезаются до 5000
+        if random.random() < 0.066:
+            rich = await run_in_thread(self._storage.get_random_users, count=30)
+            cnt = 0
+            for u in rich:
+                if u.rating > 5000:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=5000)
+                    cnt += 1
+            if cnt:
+                _ev("talony", f"🎫 <b>ТАЛОНЫ!</b> Рейтинг лимитирован! {cnt} юзеров срезаны до 5000!")
+
+        # 43. Путч (1/25) — топ-3 теряют всё, боттом-3 получают их рейтинги
+        if random.random() < 0.04:
+            top3 = await run_in_thread(self._storage.top, limit=3)
+            bot3 = await run_in_thread(self._storage.get_bottom_users, limit=3)
+            pairs = min(len(top3), len(bot3))
+            pparts = []
+            for i in range(pairs):
+                await run_in_thread(self._storage.set_rating, user_id=bot3[i].user_id, rating=top3[i].rating)
+                await run_in_thread(self._storage.set_rating, user_id=top3[i].user_id, rating=0)
+                pparts.append(f"{_display_name_from_row(top3[i])} → 0, {_display_name_from_row(bot3[i])} → {top3[i].rating}")
+            if pparts:
+                _ev("putch", f"🏴 <b>ПУТЧ!</b> Переворот! {'; '.join(pparts)}")
+
+        # 44. Чернобыль (1/30) — рейтинги 5 случайных юзеров мутируют (x random 0.1-3.0)
+        if random.random() < 0.033:
+            irradiated = await run_in_thread(self._storage.get_random_users, count=5)
+            iparts = []
+            for u in irradiated:
+                mult = random.uniform(0.1, 3.0)
+                new_r = int(u.rating * mult)
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+                iparts.append(f"{_display_name_from_row(u)} x{mult:.1f}")
+            if iparts:
+                _ev("chernobyl", f"☢️ <b>ЧЕРНОБЫЛЬ!</b> Радиоактивная мутация: {', '.join(iparts)}")
+
+        # 45. Денежная реформа Павлова (1/25) — все рейтинги > 1000 делятся на 10
+        if random.random() < 0.04:
+            all_u = await run_in_thread(self._storage.get_random_users, count=50)
+            cnt = 0
+            for u in all_u:
+                if abs(u.rating) > 1000:
+                    await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=u.rating // 10)
+                    cnt += 1
+            if cnt:
+                _ev("pavlov_reform", f"💸 <b>РЕФОРМА ПАВЛОВА!</b> Рейтинги > 1000 разделены на 10! ({cnt} юзеров)")
+
+        # 46. Стройка коммунизма (1/15) — всем рейтинг = 1917
+        if random.random() < 0.066:
+            all_u = await run_in_thread(self._storage.get_random_users, count=50)
+            for u in all_u:
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=1917)
+            _ev("communism_build", f"🏗️ <b>СТРОЙКА КОММУНИЗМА!</b> Все рейтинги = 1917!")
+
+        # 47. Водка (1/10) — рейтинги 3 случайных юзеров рандомно шатаются ±50%
+        if random.random() < 0.1:
+            drunks = await run_in_thread(self._storage.get_random_users, count=3)
+            vparts = []
+            for u in drunks:
+                swing = random.randint(-50, 50) * u.rating // 100 if u.rating else random.randint(-500, 500)
+                vn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=swing)
+                vparts.append(f"{_display_name_from_row(u)} {swing:+d}")
+            if vparts:
+                _ev("vodka", f"🍾 <b>ВОДКА!</b> Рейтинги шатаются: {', '.join(vparts)}")
+
+        # 48. Железный занавес (1/25) — топ-1 и боттом-1 больше не видят друг друга (swap)
+        if random.random() < 0.04:
+            top1 = await run_in_thread(self._storage.top, limit=1)
+            bot1 = await run_in_thread(self._storage.get_bottom_users, limit=1)
+            if top1 and bot1 and top1[0].user_id != bot1[0].user_id:
+                await run_in_thread(self._storage.swap_ratings, uid1=top1[0].user_id, uid2=bot1[0].user_id)
+                _ev("iron_curtain", f"🚧 <b>ЖЕЛЕЗНЫЙ ЗАНАВЕС!</b> {_display_name_from_row(top1[0])} ↔ {_display_name_from_row(bot1[0])} поменялись рейтингами!")
+
+        # 49. КГБ (1/15) — голосующий теряет 25% рейтинга (слежка)
+        if random.random() < 0.066:
+            vname = f"@{from_user.username}" if from_user.username else from_user.full_name
+            v_r = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
+            loss = abs(v_r) * 25 // 100 if v_r else 250
+            kgb_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-loss)
+            _ev("kgb", f"🕵️ <b>КГБ!</b> {vname} под наблюдением! Штраф -{loss} → {kgb_new}")
+
+        # 50. Очередь (1/15) — все юзеры сортируются по рейтингу и получают номер * 100
+        if random.random() < 0.066:
+            queue = await run_in_thread(self._storage.top, limit=20)
+            qparts = []
+            for i, u in enumerate(queue):
+                new_r = (i + 1) * 100
+                await run_in_thread(self._storage.set_rating, user_id=u.user_id, rating=new_r)
+                qparts.append(f"{_display_name_from_row(u)} → {new_r}")
+            if qparts:
+                _ev("queue", f"🧍 <b>ОЧЕРЕДЬ!</b> Рейтинги по номерам: {', '.join(qparts[:5])}...")
+
         # === PERIODIC EVENTS ===
 
         # Tax on top-1 (every ~50 votes)
