@@ -299,29 +299,21 @@ async def cmd_stats(message: Message, ctx: AppContext) -> None:
     now = time.time()
 
     if not is_pchellovod:
-        # Check vote ban
         if uid in _vote_bans and now < _vote_bans[uid]:
             remaining = int(_vote_bans[uid] - now)
             await message.answer(f"Ты забанен. Осталось {remaining} сек.")
             return
-
-        # Track spam
-        history = _stats_history[uid]
-        history.append(now)
-        # Keep only last 60s
-        _stats_history[uid] = [t for t in history if now - t < 60]
-
-        # Check cooldown (30s)
+        _stats_history[uid] = [t for t in _stats_history[uid] if now - t < 60]
+        _stats_history[uid].append(now)
+        if len(_stats_history[uid]) >= _STATS_SPAM_COUNT:
+            _vote_bans[uid] = now + _STATS_BAN_SECONDS
+            _stats_history[uid] = []
+            await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на голосование: 5 минут.")
+            return
         if len(_stats_history[uid]) >= 2:
             prev = _stats_history[uid][-2]
             if now - prev < _STATS_COOLDOWN:
                 await message.answer(f"Кулдаун {_STATS_COOLDOWN} сек. Подожди.")
-                # Count rapid uses in last 60s
-                rapid = [t for t in _stats_history[uid] if now - t < 60]
-                if len(rapid) >= _STATS_SPAM_COUNT:
-                    _vote_bans[uid] = now + _STATS_BAN_SECONDS
-                    _stats_history[uid] = []
-                    await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на голосование: 5 минут.")
                 return
 
     stats = ctx.rating.get_stats()
