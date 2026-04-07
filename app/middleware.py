@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
@@ -145,6 +146,14 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
+                        if _was_reset and bot is not None:
+                            try:
+                                sset = await bot.get_sticker_set("likvidacia_blcktlk")
+                                if sset.stickers:
+                                    sticker = random.choice(sset.stickers)
+                                    await message.answer_sticker(sticker.file_id)
+                            except Exception:
+                                pass
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(
@@ -198,6 +207,14 @@ class ActivityRatingMiddleware(BaseMiddleware):
                         if _was_reset:
                             text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
                         await message.reply(text, parse_mode="HTML")
+                        if _was_reset and bot is not None:
+                            try:
+                                sset = await bot.get_sticker_set("likvidacia_blcktlk")
+                                if sset.stickers:
+                                    sticker = random.choice(sset.stickers)
+                                    await message.answer_sticker(sticker.file_id)
+                            except Exception:
+                                pass
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(

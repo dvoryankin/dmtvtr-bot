@@ -238,6 +238,14 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
     if was_reset:
         text += f"\n\n<b>🔄 {profile.display_name} — ТЫ ОБНУЛИРОВАН !!!</b>"
     await message.answer(text, parse_mode="HTML")
+    if was_reset:
+        try:
+            sset = await bot.get_sticker_set("likvidacia_blcktlk")
+            if sset.stickers:
+                sticker = random.choice(sset.stickers)
+                await message.answer_sticker(sticker.file_id)
+        except Exception:
+            pass
 
     # If this is a supergroup and both are admins, try to reflect badge as Telegram admin title.
     if message.chat.type in {"group", "supergroup"}:
