@@ -147,6 +147,8 @@ class RatingService:
         self._stats: dict[str, int] = defaultdict(int)
         self._event_stats: dict[str, int] = defaultdict(int)
         self._event_total: int = 0
+        self._last_top_tax_ts: float = time.time()
+        self._top_tax_index: int = 0  # cycles through users by rank
 
     def init_db(self) -> None:
         self._storage.init_db()
@@ -1911,6 +1913,20 @@ class RatingService:
                 _ev("jackpot_mega", f"💰 <b>МЕГА-ДЖЕКПОТ!</b> {_display_name_from_row(lucky_j)} получает +100000! → {jn}")
 
         # === PERIODIC EVENTS ===
+
+        # Rotating top tax (every ~2 hours, cycles through users by rank)
+        now_time = time.time()
+        if now_time - self._last_top_tax_ts >= 7200:  # 2 hours
+            self._last_top_tax_ts = now_time
+            all_ranked = await run_in_thread(self._storage.top, chat_id=chat_id, limit=50)
+            if all_ranked:
+                idx = self._top_tax_index % len(all_ranked)
+                self._top_tax_index += 1
+                victim_tax = all_ranked[idx]
+                if victim_tax.rating > 0:
+                    tax_amt = victim_tax.rating * 15 // 100
+                    tn, *_ = await run_in_thread(self._storage.add_points, user_id=victim_tax.user_id, delta=-tax_amt)
+                    _ev("rotating_tax", f"🔄🏛️ <b>РОТАЦИОННЫЙ НАЛОГ!</b> {_display_name_from_row(victim_tax)} (#{idx+1}) теряет 15%: -{tax_amt} → {tn}")
 
         # Tax on top-1 (every ~50 votes)
         self._tax_counter += 1
