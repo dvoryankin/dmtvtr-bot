@@ -463,7 +463,7 @@ async def cmd_award_badge(message: Message, bot: Bot, ctx: AppContext) -> None:
     p_before = await ctx.rating.profile(user=target)
     if p_before.rating < badge.threshold:
         delta = badge.threshold - p_before.rating
-        new_rating, _ = await ctx.rating.add_points(user=target, delta=delta)
+        new_rating, *_ = await ctx.rating.add_points(user=target, delta=delta)
         logging.info("Awarded %s points to %s (new=%s)", delta, target.id, new_rating)
 
     p_after = await ctx.rating.profile(user=target)

@@ -179,7 +179,7 @@ class RatingService:
             last_name=user.last_name,
         )
 
-    async def add_points(self, *, user: User, delta: int) -> tuple[int, bool]:
+    async def add_points(self, *, user: User, delta: int) -> tuple[int, bool, str | None]:
         await self.touch_user(user)
         return await run_in_thread(self._storage.add_points, user_id=user.id, delta=delta)
 
@@ -381,7 +381,7 @@ class RatingService:
             to_user_id=to_user.id,
             ts=now_ts,
         )
-        new_rating, was_reset = await run_in_thread(
+        new_rating, was_reset, reset_msg = await run_in_thread(
             self._storage.add_points, user_id=actual_target_id, delta=delta
         )
 
@@ -396,7 +396,7 @@ class RatingService:
         for votes_left, amount in credits_to_process:
             votes_left -= 1
             if votes_left <= 0:
-                cr_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-amount)
+                cr_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-amount)
                 _ev("credit_collect", f"🏦 <b>КРЕДИТ ПРОСРОЧЕН!</b> С {target_name} списано {amount} (с процентами) → {cr_new}")
                 if actual_target_id == to_user.id:
                     new_rating = cr_new
@@ -407,7 +407,7 @@ class RatingService:
 
         # Karma (1/10) — voter also gets the same delta
         if not missed and random.random() < 0.1:
-            voter_new, _ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=delta)
+            voter_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=delta)
             vname = f"@{from_user.username}" if from_user.username else from_user.full_name
             sign = f"+{delta}" if delta >= 0 else str(delta)
             _ev("karma", f"☯️ <b>КАРМА!</b> {vname} тоже получает {sign} → {voter_new}")
@@ -424,14 +424,14 @@ class RatingService:
             victim = await run_in_thread(self._storage.get_random_user, exclude_id=from_user.id)
             if victim:
                 dtp_delta = random.randint(-500, 500)
-                dtp_new, _ = await run_in_thread(self._storage.add_points, user_id=victim.user_id, delta=dtp_delta)
+                dtp_new, *_ = await run_in_thread(self._storage.add_points, user_id=victim.user_id, delta=dtp_delta)
                 vname = _display_name_from_row(victim)
                 sign = f"+{dtp_delta}" if dtp_delta >= 0 else str(dtp_delta)
                 _ev("dtp", f"🚗💥 <b>ДТП!</b> {vname} случайно задет: {sign} → {dtp_new}")
 
         # Jackpot of the poor (1/10, only if target negative)
         if target_rating < 0 and random.random() < 0.1:
-            bonus_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=10000)
+            bonus_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=10000)
             _ev("jackpot_poor", f"🎰 <b>ДЖЕКПОТ НИЩЕГО!</b> {target_name} получает +10000 → {bonus_new}")
 
         # Robin Hood (1/15) — take from top-1
@@ -439,7 +439,7 @@ class RatingService:
             top_users = await run_in_thread(self._storage.top, limit=1)
             if top_users and top_users[0].rating > 0:
                 rob_amount = top_users[0].rating // 5
-                rob_new, _ = await run_in_thread(self._storage.add_points, user_id=top_users[0].user_id, delta=-rob_amount)
+                rob_new, *_ = await run_in_thread(self._storage.add_points, user_id=top_users[0].user_id, delta=-rob_amount)
                 tname = _display_name_from_row(top_users[0])
                 _ev("robin_hood", f"🏹 <b>РОБИН ГУД!</b> У {tname} изъято {rob_amount} рейтинга → {rob_new}")
 
@@ -447,7 +447,7 @@ class RatingService:
         if random.random() < 0.066:
             winner = await run_in_thread(self._storage.get_random_user)
             if winner:
-                lot_new, _ = await run_in_thread(self._storage.add_points, user_id=winner.user_id, delta=5000)
+                lot_new, *_ = await run_in_thread(self._storage.add_points, user_id=winner.user_id, delta=5000)
                 wname = _display_name_from_row(winner)
                 _ev("lottery", f"🎫 <b>ЛОТЕРЕЯ!</b> {wname} выиграл +5000 → {lot_new}")
 
@@ -522,7 +522,7 @@ class RatingService:
 
         # 3. Credit (1/15) — target gets +5000 now, -7500 in 10 votes
         if random.random() < 0.066:
-            cr_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=5000)
+            cr_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=5000)
             self._pending_credits.setdefault(to_user.id, []).append((10, 7500))
             if actual_target_id == to_user.id:
                 new_rating = cr_new
@@ -533,7 +533,7 @@ class RatingService:
             uname = to_user.username or to_user.full_name or "user"
             mult = len(uname)
             circus_delta = delta * mult
-            circus_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=circus_delta)
+            circus_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=circus_delta)
             if actual_target_id == to_user.id:
                 new_rating = circus_new
             _ev("circus", f"🎪 <b>ЦИРК!</b> Дельта умножена на длину ника ({mult} букв): {circus_delta:+d} → {circus_new}")
@@ -556,7 +556,7 @@ class RatingService:
             if nearest:
                 steal = abs(nearest.rating) // 4 if nearest.rating != 0 else 100
                 await run_in_thread(self._storage.add_points, user_id=nearest.user_id, delta=-steal)
-                mag_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=steal)
+                mag_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=steal)
                 nname = _display_name_from_row(nearest)
                 _ev("magnet", f"🧲 <b>МАГНИТ!</b> {target_name} притянул {steal} рейтинга от {nname} → {mag_new}")
 
@@ -569,7 +569,7 @@ class RatingService:
             else:
                 v_rating = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
                 bonus = abs(v_rating) if v_rating != 0 else 1000
-                v_new, _ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=bonus * 5)
+                v_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=bonus * 5)
                 _ev("roulette_win", f"🎲 <b>РУССКАЯ РУЛЕТКА!</b> {vname} выжил и получает x6 → {v_new}")
 
         # 8. Diamond rain (1/15) — 5 random users get +1000
@@ -585,7 +585,7 @@ class RatingService:
         # 9. Slowdown (1/20) — voter gets -500 penalty
         if random.random() < 0.05:
             vname = f"@{from_user.username}" if from_user.username else from_user.full_name
-            slow_new, _ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-500)
+            slow_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=-500)
             _ev("slowdown", f"🐌 <b>ЗАМЕДЛЕНИЕ!</b> {vname} получает штраф -500 → {slow_new}")
 
         # 10. Mutation (1/20) — shuffle digits of target's rating
@@ -613,7 +613,7 @@ class RatingService:
             tr = await run_in_thread(self._storage.get_user_rating, user_id=to_user.id)
             steal = abs(tr) // 2 if tr != 0 else 500
             await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=-steal)
-            pirate_new, _ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=steal)
+            pirate_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=steal)
             vname = f"@{from_user.username}" if from_user.username else from_user.full_name
             _ev("piracy", f"🏴‍☠️ <b>ПИРАТСТВО!</b> {vname} украл {steal} рейтинга у {target_name} → {pirate_new}")
 
@@ -632,7 +632,7 @@ class RatingService:
             rparts = []
             for u in rainbows:
                 rd = random.randint(-100, 100)
-                rn, _ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=rd)
+                rn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=rd)
                 rparts.append(f"{_display_name_from_row(u)} {rd:+d}")
             if rparts:
                 _ev("rainbow", f"🌈 <b>РАДУГА!</b> Микрохаос: {', '.join(rparts)}")
@@ -673,7 +673,7 @@ class RatingService:
         if random.random() < 0.05:
             bottom = await run_in_thread(self._storage.get_bottom_users, limit=1)
             if bottom:
-                nec_new, _ = await run_in_thread(self._storage.add_points, user_id=bottom[0].user_id, delta=3000)
+                nec_new, *_ = await run_in_thread(self._storage.add_points, user_id=bottom[0].user_id, delta=3000)
                 bname = _display_name_from_row(bottom[0])
                 _ev("necromancer", f"🪦 <b>НЕКРОМАНТ!</b> {bname} воскрешён: +3000 → {nec_new}")
 
@@ -683,7 +683,7 @@ class RatingService:
             fparts = []
             for u in victims:
                 loss = abs(u.rating) * 30 // 100
-                fn, _ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-loss)
+                fn, *_ = await run_in_thread(self._storage.add_points, user_id=u.user_id, delta=-loss)
                 fparts.append(f"{_display_name_from_row(u)} -{loss}")
             if fparts:
                 _ev("fire", f"🔥 <b>ПОЖАР!</b> Потери 30%: {', '.join(fparts)}")
@@ -694,7 +694,7 @@ class RatingService:
             abductee = await run_in_thread(self._storage.get_random_user, exclude_id=to_user.id)
             if abductee and cur_r != 0:
                 await run_in_thread(self._storage.set_rating, user_id=to_user.id, rating=0)
-                abd_new, _ = await run_in_thread(self._storage.add_points, user_id=abductee.user_id, delta=cur_r)
+                abd_new, *_ = await run_in_thread(self._storage.add_points, user_id=abductee.user_id, delta=cur_r)
                 aname = _display_name_from_row(abductee)
                 if actual_target_id == to_user.id:
                     new_rating = 0
@@ -714,7 +714,7 @@ class RatingService:
         if random.random() < 0.066:
             vr_rating = await run_in_thread(self._storage.get_user_rating, user_id=from_user.id)
             bonus = abs(vr_rating) * 4 if vr_rating != 0 else 2000
-            stak_new, _ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=bonus)
+            stak_new, *_ = await run_in_thread(self._storage.add_points, user_id=from_user.id, delta=bonus)
             vname = f"@{from_user.username}" if from_user.username else from_user.full_name
             _ev("stakhanovets", f"🔨 <b>СТАХАНОВЕЦ!</b> {vname} перевыполнил план! Рейтинг x5 → {stak_new}")
 
@@ -747,7 +747,7 @@ class RatingService:
         if random.random() < 0.05:
             cosmo = await run_in_thread(self._storage.get_random_user)
             if cosmo:
-                sp_new, _ = await run_in_thread(self._storage.add_points, user_id=cosmo.user_id, delta=10000)
+                sp_new, *_ = await run_in_thread(self._storage.add_points, user_id=cosmo.user_id, delta=10000)
                 _ev("sputnik", f"🚀 <b>СПУТНИК!</b> {_display_name_from_row(cosmo)} запущен на орбиту! +10000 → {sp_new}")
 
         # 7. Правда (1/20) — показывает утроенный рейтинг, а реальный другой
@@ -761,14 +761,14 @@ class RatingService:
             builder = await run_in_thread(self._storage.get_random_user)
             if builder:
                 bam_d = random.randint(1000, 5000)
-                bam_new, _ = await run_in_thread(self._storage.add_points, user_id=builder.user_id, delta=bam_d)
+                bam_new, *_ = await run_in_thread(self._storage.add_points, user_id=builder.user_id, delta=bam_d)
                 _ev("bam", f"🏗️ <b>БАМ!</b> {_display_name_from_row(builder)} строит магистраль! +{bam_d} → {bam_new}")
 
         # 9. Герой Соцтруда (1/20) — топ-1 получает +5000
         if random.random() < 0.05:
             top1 = await run_in_thread(self._storage.top, limit=1)
             if top1:
-                hero_new, _ = await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=5000)
+                hero_new, *_ = await run_in_thread(self._storage.add_points, user_id=top1[0].user_id, delta=5000)
                 _ev("hero_soctrud", f"🎖️ <b>ГЕРОЙ СОЦТРУДА!</b> {_display_name_from_row(top1[0])} награждён! +5000 → {hero_new}")
 
         # 10. Дефицит (1/20) — у всех с рейтингом > 1000 списывается 50%
@@ -906,7 +906,7 @@ class RatingService:
         if random.random() < 0.05:
             cosmonaut = await run_in_thread(self._storage.get_random_user)
             if cosmonaut:
-                gag_new, _ = await run_in_thread(self._storage.add_points, user_id=cosmonaut.user_id, delta=1961)
+                gag_new, *_ = await run_in_thread(self._storage.add_points, user_id=cosmonaut.user_id, delta=1961)
                 _ev("gagarin", f"🛰️ <b>ПОЕХАЛИ!</b> {_display_name_from_row(cosmonaut)} летит в космос! +1961 → {gag_new}")
 
         # 24. Красная Армия (1/15) — все с отрицательным рейтингом получают +500
@@ -931,7 +931,7 @@ class RatingService:
         # 26. Завод (1/15) — голосующий производит дельта x10 для цели
         if random.random() < 0.066:
             factory_d = abs(delta) * 10 if delta != 0 else 5000
-            fac_new, _ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=factory_d)
+            fac_new, *_ = await run_in_thread(self._storage.add_points, user_id=to_user.id, delta=factory_d)
             vname = f"@{from_user.username}" if from_user.username else from_user.full_name
             if actual_target_id == to_user.id:
                 new_rating = fac_new
@@ -982,7 +982,7 @@ class RatingService:
             top_users = await run_in_thread(self._storage.top, limit=1)
             if top_users and top_users[0].rating > 0:
                 tax = top_users[0].rating // 10
-                tax_new, _ = await run_in_thread(self._storage.add_points, user_id=top_users[0].user_id, delta=-tax)
+                tax_new, *_ = await run_in_thread(self._storage.add_points, user_id=top_users[0].user_id, delta=-tax)
                 tname = _display_name_from_row(top_users[0])
                 _ev("tax", f"🏛️ <b>НАЛОГОВАЯ ПРИШЛА!</b> У {tname} списано 10% рейтинга ({tax}) → {tax_new}")
 
@@ -997,6 +997,10 @@ class RatingService:
         if random.random() < 0.125:
             self._next_multiplier = True
             _ev("multiplier_set", "⚡ <b>ВНИМАНИЕ:</b> следующее голосование будет x100!")
+
+        # Reset message from storage thresholds
+        if was_reset and reset_msg:
+            _ev("reset", f"<b>{reset_msg}</b>")
 
         # Stats & xuan sticker counter
         self._stats["total_votes"] += 1
@@ -1066,7 +1070,7 @@ class RatingService:
             user_id=user.id,
             ts=now_ts,
         )
-        new_rating, _ = await run_in_thread(
+        new_rating, *_ = await run_in_thread(
             self._storage.add_points,
             user_id=user.id,
             delta=self._activity_points_per_award,
