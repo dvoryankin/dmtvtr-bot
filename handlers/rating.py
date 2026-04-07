@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import random
+import time
+from collections import defaultdict
 
 from aiogram import Bot, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
@@ -13,6 +15,14 @@ from ratings.badges import BADGES, badge_for_rating
 
 
 router = Router(name="rating")
+
+# /stats spam protection: {user_id: [timestamps]}
+_stats_history: dict[int, list[float]] = defaultdict(list)
+# Vote ban: {user_id: ban_until_ts}
+_vote_bans: dict[int, float] = {}
+_STATS_COOLDOWN = 30
+_STATS_SPAM_COUNT = 5
+_STATS_BAN_SECONDS = 300
 
 
 def _format_seconds(seconds: int) -> str:
@@ -213,6 +223,14 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         await message.answer("Ответь на сообщение человека командой /plus.")
         return
 
+    # Check vote ban
+    uid = message.from_user.id
+    is_pchellovod = (message.from_user.username or "").lower() == "pchellovod"
+    if not is_pchellovod and uid in _vote_bans and time.time() < _vote_bans[uid]:
+        remaining = int(_vote_bans[uid] - time.time())
+        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+        return
+
     to_user = message.reply_to_message.from_user
     vr = await ctx.rating.vote_plus_one(
         chat_id=message.chat.id,
@@ -274,6 +292,38 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
 
 @router.message(Command("stats", "статистика", "стата"))
 async def cmd_stats(message: Message, ctx: AppContext) -> None:
+    if not message.from_user:
+        return
+    uid = message.from_user.id
+    is_pchellovod = (message.from_user.username or "").lower() == "pchellovod"
+    now = time.time()
+
+    if not is_pchellovod:
+        # Check vote ban
+        if uid in _vote_bans and now < _vote_bans[uid]:
+            remaining = int(_vote_bans[uid] - now)
+            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+            return
+
+        # Track spam
+        history = _stats_history[uid]
+        history.append(now)
+        # Keep only last 60s
+        _stats_history[uid] = [t for t in history if now - t < 60]
+
+        # Check cooldown (30s)
+        if len(_stats_history[uid]) >= 2:
+            prev = _stats_history[uid][-2]
+            if now - prev < _STATS_COOLDOWN:
+                await message.answer(f"Кулдаун {_STATS_COOLDOWN} сек. Подожди.")
+                # Count rapid uses in last 60s
+                rapid = [t for t in _stats_history[uid] if now - t < 60]
+                if len(rapid) >= _STATS_SPAM_COUNT:
+                    _vote_bans[uid] = now + _STATS_BAN_SECONDS
+                    _stats_history[uid] = []
+                    await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на голосование: 5 минут.")
+                return
+
     stats = ctx.rating.get_stats()
     user_count = await ctx.rating.get_user_count(chat_id=message.chat.id)
     avg_rating = await ctx.rating.get_average_rating()

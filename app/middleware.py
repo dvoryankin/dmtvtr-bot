@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, Bot
@@ -171,6 +172,15 @@ class ActivityRatingMiddleware(BaseMiddleware):
                             f"Кулдаун: повторить можно через {_format_seconds(vr.retry_after)}.\n"
                             f"Кому: {target}"
                         )
+
+                # Check vote ban
+                from handlers.rating import _vote_bans
+                _ban_until = _vote_bans.get(message.from_user.id, 0)
+                if _ban_until > time.time() and (message.from_user.username or "").lower() != "pchellovod":
+                    if is_reply and (is_negative or is_praise):
+                        remaining = int(_ban_until - time.time())
+                        await message.reply(f"Ты забанен. Осталось {remaining} сек.")
+                        return
 
                 # Handle reply-minus.
                 if (
