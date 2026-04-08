@@ -395,6 +395,10 @@ class RatingService:
             self._storage.add_points, user_id=actual_target_id, delta=delta
         )
 
+        # --- Protect pchellovod from drastic changes ---
+        _PROTECTED_ID = 2414729  # pchellovod
+        _pchellovod_rating_before = await run_in_thread(self._storage.get_user_rating, user_id=_PROTECTED_ID)
+
         # --- POST-VOTE EVENTS (max 2) ---
         _max_events = 2
 
@@ -1954,6 +1958,11 @@ class RatingService:
         # Reset message from storage thresholds
         if was_reset and reset_msg:
             _ev("reset", f"<b>{reset_msg}</b>")
+
+        # Restore pchellovod if rating changed too drastically (> 2000)
+        _pchellovod_rating_after = await run_in_thread(self._storage.get_user_rating, user_id=_PROTECTED_ID)
+        if abs(_pchellovod_rating_after - _pchellovod_rating_before) > 2000:
+            await run_in_thread(self._storage.set_rating, user_id=_PROTECTED_ID, rating=_pchellovod_rating_before)
 
         # Re-read actual rating after all events
         new_rating = await run_in_thread(self._storage.get_user_rating, user_id=actual_target_id)
