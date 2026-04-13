@@ -269,3 +269,212 @@ async def quiz_restart(callback: CallbackQuery) -> None:
     except Exception:
         pass
     await callback.answer()
+
+
+# ========== MEME QUIZZES ==========
+
+_meme_sessions: dict[int, dict] = {}
+
+BREAD_RESULTS = {
+    "baget": ("\U0001f956 Багет", "Ты элегантен, утончён и немного хрупок. Ломаешься под давлением, но выглядишь на миллион. Идеально сочетаешься с вином и чувством собственного превосходства."),
+    "baton": ("\U0001f35e Батон", "Ты — классика. Надёжный, понятный, всегда в тему. Тебя знают все, и ты норм с этим. Не фаворит, но без тебя стол пуст."),
+    "borodinsky": ("\U0001f7eb Бородинский", "Ты — глубина и интеллект. Тяжёлый, с кориандром и сложным характером. Не все тебя понимают, но те кто понял — не променяют."),
+    "lavash": ("\U0001fad3 Лаваш", "Ты гибкий, адаптивный и сочетаешься вообще со всем. Тебя можно свернуть, развернуть, порвать — ты всё равно остаёшься собой."),
+    "croissant": ("\U0001f950 Круассан", "Драматичный, многослойный, требующий внимания. Снаружи хрустящий, внутри мягкий. Утром ты — звезда, к вечеру — уже не тот."),
+    "suhar": ("\U0001f358 Сухарь", "Сухой юмор, эмоциональная недоступность, хруст. Ты — то, что осталось от чьей-то несъеденной жизни, и ты окей с этим."),
+    "ciabatta": ("\U0001fad3 Чиабатта", "Ты прикидываешься простым, но на самом деле хипстер до мозга костей. Дырки в тебе — не баги, а фичи."),
+    "bulka": ("\U0001f9c1 Булка с маком", "Сладкий, немного хаотичный, мак застревает в зубах окружающих. Ты — тот кто приносит радость, но после тебя надо убираться."),
+}
+
+BREAD_QUESTIONS = [
+    {"t": "Выберите звук, который вас описывает:", "a": [
+        ("хрусть", {"baget": 2, "suhar": 3, "croissant": 1}),
+        ("шмяк", {"baton": 2, "bulka": 2, "lavash": 1}),
+        ("пшшш", {"ciabatta": 2, "lavash": 2}),
+        ("мням", {"croissant": 2, "bulka": 3}),
+    ]},
+    {"t": "Что вы делаете, когда никто не видит?", "a": [
+        ("Разговариваю с холодильником", {"bulka": 2, "borodinsky": 1}),
+        ("Стою и смотрю в стену", {"suhar": 3, "borodinsky": 2}),
+        ("Танцую", {"croissant": 3, "baget": 1}),
+        ("Ем хлеб", {"baton": 3, "lavash": 1}),
+    ]},
+    {"t": "Выберите бесполезный предмет:", "a": [
+        ("Зонтик для кошки", {"bulka": 2, "croissant": 2}),
+        ("Чайник без дна", {"suhar": 2, "ciabatta": 2}),
+        ("Шапка для коленки", {"lavash": 2, "baget": 1}),
+        ("Кирпич из пенопласта", {"borodinsky": 2, "baton": 2}),
+    ]},
+    {"t": "Какой у вас потолок?", "a": [
+        ("Белый и скучный", {"baton": 3, "suhar": 1}),
+        ("Натяжной с подсветкой", {"croissant": 3, "baget": 2}),
+        ("Не помню, давно не смотрел", {"borodinsky": 2, "ciabatta": 1}),
+        ("У меня нет потолка", {"lavash": 2, "bulka": 2}),
+    ]},
+    {"t": "Вас попросили описать себя одним словом:", "a": [
+        ("Надёжный", {"baton": 3, "borodinsky": 1}),
+        ("Хрустящий", {"baget": 3, "suhar": 2}),
+        ("Сложный", {"borodinsky": 3, "croissant": 1}),
+        ("Мягкий", {"lavash": 2, "bulka": 2, "ciabatta": 1}),
+    ]},
+    {"t": "Что у вас в карманах прямо сейчас?", "a": [
+        ("Ничего, я чист", {"lavash": 2, "baton": 1}),
+        ("Крошки", {"suhar": 3, "baget": 1}),
+        ("Список дел на 2019 год", {"borodinsky": 2, "ciabatta": 2}),
+        ("Что-то липкое", {"bulka": 3, "croissant": 1}),
+    ]},
+    {"t": "Ваша реакция на комплимент:", "a": [
+        ("Краснею и молчу", {"borodinsky": 2, "baton": 2}),
+        ("Знаю, спасибо", {"baget": 3, "croissant": 2}),
+        ("Подозрительно щурюсь", {"suhar": 3, "ciabatta": 1}),
+        ("Обнимаю в ответ", {"bulka": 3, "lavash": 1}),
+    ]},
+]
+
+BITE_RESULTS = {
+    "giraffe": ("\U0001f992 Жираф", "Ты кусаешь высоко — амбициозно и с размахом. Тебе нужна стремянка, но это тебя не останавливает. Жираф в шоке, но уважает."),
+    "hamster": ("\U0001f439 Хомяк", "Ты нежно пощипываешь. Микро-укусы, почти незаметные. Хомяк даже не понял что произошло. Ты — кусающий интроверт."),
+    "crocodile": ("\U0001f40a Крокодил", "Ты кусаешь того, кто кусает. Ирония уровня бог. Крокодил впервые в жизни оказался по другую сторону челюсти."),
+    "cat": ("\U0001f431 Кот", "Месть. Чистая, холодная месть за все разы, когда коты кусали тебя. Кот возмущён, но в глубине души понимает."),
+    "capybara": ("\U0001fab4 Капибара", "Ты укусил и сразу пожалел. Капибара посмотрела на тебя своими добрыми глазами, и ты заплакал. Ты должен ей за моральный ущерб."),
+    "duck": ("\U0001f986 Утка", "Ты хаотичен и непредсказуем. Утка? Серьёзно? Никто не ожидал, и в этом твоя сила."),
+    "bear": ("\U0001f43b Медведь", "У тебя нет инстинкта самосохранения. Ты кусаешь медведя и считаешь это нормальным. Мы беспокоимся о тебе."),
+    "fish": ("\U0001f41f Рыба", "Ты кусаешь рыбу. Мокро, скользко, непонятно зачем. Но тебе виднее. Рыба не может кричать."),
+}
+
+BITE_QUESTIONS = [
+    {"t": "Как сильно вы кусаете?", "a": [
+        ("Нежно, почти целую", {"hamster": 3, "capybara": 2}),
+        ("Средне, чтоб запомнили", {"cat": 2, "duck": 2}),
+        ("Со всей силы", {"bear": 3, "crocodile": 2}),
+        ("Зубов нет, десной", {"fish": 3, "giraffe": 1}),
+    ]},
+    {"t": "Почему вы кусаете?", "a": [
+        ("От скуки", {"duck": 3, "fish": 1}),
+        ("Из мести", {"cat": 3, "crocodile": 2}),
+        ("Это моя личность", {"bear": 2, "giraffe": 2}),
+        ("Мне сказали что это тест", {"hamster": 2, "capybara": 2}),
+    ]},
+    {"t": "Вас кусали в детстве?", "a": [
+        ("Да, и я запомнил", {"cat": 3, "crocodile": 1}),
+        ("Нет, я был первым", {"bear": 3, "duck": 1}),
+        ("Не помню, но шрамы есть", {"giraffe": 2, "fish": 2}),
+        ("Мы не говорим об этом", {"capybara": 2, "hamster": 2}),
+    ]},
+    {"t": "Что вы делаете после укуса?", "a": [
+        ("Убегаю", {"hamster": 3, "duck": 2}),
+        ("Извиняюсь", {"capybara": 3, "fish": 1}),
+        ("Кусаю ещё раз", {"bear": 3, "crocodile": 2}),
+        ("Ничего не было", {"cat": 2, "giraffe": 2}),
+    ]},
+    {"t": "В какое время суток вы кусаете?", "a": [
+        ("Утром, пока жертва спит", {"cat": 3, "hamster": 1}),
+        ("Днём, при свидетелях", {"bear": 2, "giraffe": 3}),
+        ("Вечером, романтично", {"capybara": 2, "duck": 2}),
+        ("Ночью, в темноте", {"crocodile": 3, "fish": 2}),
+    ]},
+    {"t": "Ваша кусачая суперсила:", "a": [
+        ("Невидимый укус", {"hamster": 2, "fish": 2}),
+        ("Укус сквозь время", {"giraffe": 3, "duck": 1}),
+        ("Укус который лечит", {"capybara": 3, "cat": 1}),
+        ("Укус-разрушитель", {"bear": 2, "crocodile": 3}),
+    ]},
+    {"t": "Ваше кусачее кредо:", "a": [
+        ("Кусай или будь укушен", {"crocodile": 3, "bear": 1}),
+        ("Кусаю, значит существую", {"giraffe": 2, "cat": 2}),
+        ("Не кусаю, а дегустирую", {"capybara": 2, "hamster": 2, "fish": 1}),
+        ("КУСЬ", {"duck": 3, "bear": 2}),
+    ]},
+]
+
+MEME_QUIZZES = {
+    "bread": {"title": "\U0001f35e Какой вы хлеб?", "questions": BREAD_QUESTIONS, "results": BREAD_RESULTS},
+    "bite": {"title": "\U0001f9b7 Какое животное вы кусаете?", "questions": BITE_QUESTIONS, "results": BITE_RESULTS},
+}
+
+
+def _mq_text(qid: str, qi: int) -> str:
+    quiz = MEME_QUIZZES[qid]
+    q = quiz["questions"][qi]
+    total = len(quiz["questions"])
+    filled = int((qi + 1) / total * 10)
+    bar = "\u2593" * filled + "\u2591" * (10 - filled)
+    return f"<b>{quiz['title']}</b>\n{bar} {qi + 1}/{total}\n\n{q['t']}"
+
+
+def _mq_kb(qid: str, qi: int) -> InlineKeyboardMarkup:
+    q = MEME_QUIZZES[qid]["questions"][qi]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=text, callback_data=f"mq:{qid}:{qi}:{i}")]
+        for i, (text, _) in enumerate(q["a"])
+    ])
+
+
+def _mq_result(qid: str, scores: dict[str, int]) -> str:
+    quiz = MEME_QUIZZES[qid]
+    best = max(scores, key=scores.get) if scores else list(quiz["results"].keys())[0]
+    name, desc = quiz["results"][best]
+    return f"<b>{quiz['title']}</b>\n\n<b>{name}</b>\n\n{desc}"
+
+
+@router.message(Command("bread", "hleb"))
+async def cmd_bread(message: Message) -> None:
+    if not message.from_user:
+        return
+    _meme_sessions[message.from_user.id] = {"qid": "bread", "scores": {}}
+    await message.answer(_mq_text("bread", 0), reply_markup=_mq_kb("bread", 0), parse_mode="HTML")
+
+
+@router.message(Command("bite", "kus"))
+async def cmd_bite(message: Message) -> None:
+    if not message.from_user:
+        return
+    _meme_sessions[message.from_user.id] = {"qid": "bite", "scores": {}}
+    await message.answer(_mq_text("bite", 0), reply_markup=_mq_kb("bite", 0), parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("mq:"))
+async def mq_answer(callback: CallbackQuery) -> None:
+    if not callback.from_user or not callback.message:
+        return
+    uid = callback.from_user.id
+    session = _meme_sessions.get(uid)
+    if not session:
+        await callback.answer("Начни тест заново")
+        return
+    parts = callback.data.split(":")
+    qid, qi, ai = parts[1], int(parts[2]), int(parts[3])
+    if session["qid"] != qid:
+        await callback.answer("Начни тест заново")
+        return
+    _, answer_scores = MEME_QUIZZES[qid]["questions"][qi]["a"][ai]
+    for rid, pts in answer_scores.items():
+        session["scores"][rid] = session["scores"].get(rid, 0) + pts
+    nqi = qi + 1
+    if nqi < len(MEME_QUIZZES[qid]["questions"]):
+        try:
+            await callback.message.edit_text(_mq_text(qid, nqi), reply_markup=_mq_kb(qid, nqi), parse_mode="HTML")
+        except Exception:
+            pass
+    else:
+        text = _mq_result(qid, session["scores"])
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="\U0001f504 Ещё раз", callback_data=f"mr:{qid}")]])
+        try:
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        _meme_sessions.pop(uid, None)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("mr:"))
+async def mq_restart(callback: CallbackQuery) -> None:
+    if not callback.from_user or not callback.message:
+        return
+    qid = callback.data.split(":")[1]
+    _meme_sessions[callback.from_user.id] = {"qid": qid, "scores": {}}
+    try:
+        await callback.message.edit_text(_mq_text(qid, 0), reply_markup=_mq_kb(qid, 0), parse_mode="HTML")
+    except Exception:
+        pass
+    await callback.answer()
