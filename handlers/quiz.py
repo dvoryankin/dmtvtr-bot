@@ -63,18 +63,12 @@ def _progress_bar(cur: int, total: int) -> str:
     return "▓" * filled + "░" * (10 - filled)
 
 
-def _question_kb(qi: int, selected: int | None = None) -> InlineKeyboardMarkup:
+def _question_kb(qi: int) -> InlineKeyboardMarkup:
     labels = ["1", "2", "3", "4", "5"]
     btns = []
     for i, label in enumerate(labels):
-        val = i + 1
-        text = f"• {label} •" if selected == val else label
-        btns.append(InlineKeyboardButton(text=text, callback_data=f"quiz:{qi}:{val}"))
-    nav = []
-    if qi > 0:
-        nav.append(InlineKeyboardButton(text="← Назад", callback_data=f"quiz_nav:prev:{qi}"))
-    nav.append(InlineKeyboardButton(text="Далее →" if qi < len(QUESTIONS) - 1 else "Результаты →", callback_data=f"quiz_nav:next:{qi}"))
-    return InlineKeyboardMarkup(inline_keyboard=[btns, [InlineKeyboardButton(text="Совсем нет          ↔          Точно да", callback_data="quiz_noop")], nav])
+        btns.append(InlineKeyboardButton(text=label, callback_data=f"quiz:{qi}:{i+1}"))
+    return InlineKeyboardMarkup(inline_keyboard=[btns, [InlineKeyboardButton(text="Совсем нет          ↔          Точно да", callback_data="quiz_noop")]])
 
 
 def _question_text(qi: int) -> str:
@@ -186,71 +180,26 @@ async def quiz_answer(callback: CallbackQuery) -> None:
     val = int(parts[2])
     session["answers"][qi] = val
 
-    # Update current question to show selection
-    try:
-        await callback.message.edit_text(
-            _question_text(qi),
-            reply_markup=_question_kb(qi, selected=val),
-            parse_mode="HTML",
-        )
-    except Exception:
-        pass
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("quiz_nav:"))
-async def quiz_nav(callback: CallbackQuery) -> None:
-    if not callback.from_user or not callback.message:
-        return
-    uid = callback.from_user.id
-    session = _sessions.get(uid)
-    if not session:
-        await callback.answer("Начни квиз заново: /quiz")
-        return
-
-    parts = callback.data.split(":")
-    action = parts[1]
-    qi = int(parts[2])
-
-    if action == "next":
-        if session["answers"][qi] is None:
-            await callback.answer("Выбери ответ!")
-            return
-        if qi < len(QUESTIONS) - 1:
-            nqi = qi + 1
-            try:
-                await callback.message.edit_text(
-                    _question_text(nqi),
-                    reply_markup=_question_kb(nqi, selected=session["answers"][nqi]),
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
-        else:
-            # Show results
-            if any(a is None for a in session["answers"]):
-                await callback.answer("Не все вопросы отвечены!")
-                return
-            text = _results_text(session["answers"])
-            restart_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Пройти заново", callback_data="quiz_restart")]
-            ])
-            try:
-                await callback.message.edit_text(text, reply_markup=restart_kb, parse_mode="HTML")
-            except Exception:
-                pass
-            del _sessions[uid]
-    elif action == "prev":
-        if qi > 0:
-            nqi = qi - 1
-            try:
-                await callback.message.edit_text(
-                    _question_text(nqi),
-                    reply_markup=_question_kb(nqi, selected=session["answers"][nqi]),
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
+    nqi = qi + 1
+    if nqi < len(QUESTIONS):
+        try:
+            await callback.message.edit_text(
+                _question_text(nqi),
+                reply_markup=_question_kb(nqi),
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+    else:
+        text = _results_text(session["answers"])
+        restart_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Пройти заново", callback_data="quiz_restart")]
+        ])
+        try:
+            await callback.message.edit_text(text, reply_markup=restart_kb, parse_mode="HTML")
+        except Exception:
+            pass
+        del _sessions[uid]
     await callback.answer()
 
 
