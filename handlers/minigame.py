@@ -221,6 +221,15 @@ def make_game(chat_id: int, voter_id: int, target_name: str, target_id: int) -> 
         "splash": variant.get("splash", False),
     }
 
+    # Easter egg: koekto always gets "пуколячий", others 50/50
+    _puk_replace = {
+        "🔵 Холодный": "💨 Пуколячий",
+        "🔵 Синий": "💨 Пуколячий",
+    }
+    is_koekto = "koekto" in target_name.lower()
+    if is_koekto or random.random() < 0.5:
+        labels = [_puk_replace.get(l, l) for l in labels]
+
     text = f"🎮 <b>МИНИ-ИГРА!</b>\n\n{variant['intro'].format(target=target_name)}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=f"bomb:{game_key}:{i}")]
