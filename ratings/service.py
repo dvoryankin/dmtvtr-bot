@@ -1991,12 +1991,11 @@ class RatingService:
         # Minigame trigger (every 2-5 votes randomly)
         minigame_data = None
         if not hasattr(self, '_next_minigame'):
-            self._next_minigame = random.randint(2, 5)
+            self._next_minigame = 2
             self._minigame_counter = 0
         self._minigame_counter += 1
         if self._minigame_counter >= self._next_minigame:
             self._minigame_counter = 0
-            self._next_minigame = random.randint(2, 5)
             from handlers.minigame import make_game
             target_name = f"{to_user.username}" if to_user.username else to_user.full_name
             result = make_game(chat_id, from_user.id, target_name, to_user.id)
