@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import random
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from app.context import AppContext
 from utils.asyncio_utils import run_in_thread
@@ -226,6 +227,21 @@ def make_game(chat_id: int, voter_id: int, target_name: str, target_id: int) -> 
         for i, label in enumerate(labels)
     ])
     return text, kb, game_key
+
+
+@router.message(Command("lal"))
+async def cmd_lal(message: Message) -> None:
+    if not message.from_user:
+        return
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        await message.answer("Ответь на сообщение того, кого хочешь заминировать: /lal")
+        return
+    to_user = message.reply_to_message.from_user
+    target_name = to_user.username if to_user.username else to_user.full_name
+    result = make_game(message.chat.id, message.from_user.id, target_name, to_user.id)
+    if result:
+        text, kb, _key = result
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("bomb:"))
