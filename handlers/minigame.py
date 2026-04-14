@@ -298,6 +298,12 @@ async def bomb_answer(callback: CallbackQuery, ctx: AppContext) -> None:
         await callback.answer("Игра уже закончилась")
         return
 
+    # Only target or voter can press buttons
+    uid = callback.from_user.id
+    if uid != session["target_id"] and uid != session["voter_id"]:
+        await callback.answer("Это не твоя бомба! 💣")
+        return
+
     variant = _BOMB_VARIANTS[session["variant"]]
     target_name = session["target_name"]
     target_id = session["target_id"]
