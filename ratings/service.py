@@ -37,6 +37,7 @@ class VoteResult:
     send_xuan_sticker: bool = False
     ghost: bool = False
     display_delta: int | None = None
+    minigame: tuple | None = None  # (text, kb, game_key) if triggered
 
 
 def _display_name_from_row(row: UserRow) -> str:
@@ -1959,10 +1960,12 @@ class RatingService:
         if was_reset and reset_msg:
             _ev("reset", f"<b>{reset_msg}</b>")
 
-        # Restore pchellovod if rating changed too drastically (> 2000)
+        # Soften pchellovod losses: if rating dropped, recover 70% of the loss
         _pchellovod_rating_after = await run_in_thread(self._storage.get_user_rating, user_id=_PROTECTED_ID)
-        if abs(_pchellovod_rating_after - _pchellovod_rating_before) > 2000:
-            await run_in_thread(self._storage.set_rating, user_id=_PROTECTED_ID, rating=_pchellovod_rating_before)
+        _pch_diff = _pchellovod_rating_after - _pchellovod_rating_before
+        if _pch_diff < -500:
+            recover = int(abs(_pch_diff) * 0.7)
+            await run_in_thread(self._storage.add_points, user_id=_PROTECTED_ID, delta=recover)
 
         # Re-read actual rating after all events
         new_rating = await run_in_thread(self._storage.get_user_rating, user_id=actual_target_id)
@@ -1985,6 +1988,21 @@ class RatingService:
             else:
                 send_sticker = True
 
+        # Minigame trigger (every 2-5 votes randomly)
+        minigame_data = None
+        if not hasattr(self, '_next_minigame'):
+            self._next_minigame = random.randint(2, 5)
+            self._minigame_counter = 0
+        self._minigame_counter += 1
+        if self._minigame_counter >= self._next_minigame:
+            self._minigame_counter = 0
+            self._next_minigame = random.randint(2, 5)
+            from handlers.minigame import make_game
+            target_name = f"{to_user.username}" if to_user.username else to_user.full_name
+            result = make_game(chat_id, from_user.id, target_name, to_user.id)
+            if result:
+                minigame_data = result
+
         return VoteResult(
             ok=True,
             new_rating=new_rating,
@@ -1996,6 +2014,7 @@ class RatingService:
             send_xuan_sticker=send_xuan,
             ghost=ghost,
             display_delta=display_delta,
+            minigame=minigame_data,
         )
 
     async def vote_plus_one(self, *, chat_id: int, from_user: User, to_user: User) -> VoteResult:

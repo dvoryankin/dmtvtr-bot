@@ -282,6 +282,13 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         except Exception:
             pass
 
+    if vr.minigame is not None:
+        mg_text, mg_kb, _mg_key = vr.minigame
+        try:
+            await message.answer(mg_text, reply_markup=mg_kb, parse_mode="HTML")
+        except Exception:
+            pass
+
     # If this is a supergroup and both are admins, try to reflect badge as Telegram admin title.
     if message.chat.type in {"group", "supergroup"}:
         ok_title, err = await _sync_title_for_user(

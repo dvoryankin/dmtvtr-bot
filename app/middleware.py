@@ -157,6 +157,12 @@ class ActivityRatingMiddleware(BaseMiddleware):
                                     await message.answer_sticker(sset.stickers[0].file_id)
                             except Exception:
                                 pass
+                        if vr.minigame is not None:
+                            mg_text, mg_kb, _mg_key = vr.minigame
+                            try:
+                                await message.answer(mg_text, reply_markup=mg_kb, parse_mode="HTML")
+                            except Exception:
+                                pass
                         if bot is not None:
                             try:
                                 await bot.set_message_reaction(
