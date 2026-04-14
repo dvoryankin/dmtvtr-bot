@@ -244,8 +244,8 @@ from collections import defaultdict
 _lal_history: dict[int, list[float]] = defaultdict(list)
 _lal_bans: dict[int, float] = {}
 _LAL_COOLDOWN = 60
-_LAL_SPAM_COUNT = 3
-_LAL_BAN_SECONDS = 300
+_LAL_SPAM_COUNT = 4
+_LAL_BAN_SECONDS = 120
 
 
 @router.message(Command("lal"))
