@@ -21,9 +21,27 @@ router = Router(name="rating")
 _stats_history: dict[int, list[float]] = defaultdict(list)
 # Vote ban: {user_id: ban_until_ts}
 _vote_bans: dict[int, float] = {}
+# Ban message throttle: {user_id: (attempt_count, next_reply_at)}
+_ban_msg_throttle: dict[int, tuple[int, int]] = {}
 _STATS_COOLDOWN = 30
 _STATS_SPAM_COUNT = 3
 _STATS_BAN_SECONDS = 300
+
+
+def _should_reply_ban(uid: int) -> bool:
+    count, next_at = _ban_msg_throttle.get(uid, (0, 0))
+    count += 1
+    # Reply at 1, then every 3, then 5, then 10+
+    if count <= 1:
+        reply = True
+    elif count <= 4:
+        reply = count % 3 == 0
+    elif count <= 10:
+        reply = count % 5 == 0
+    else:
+        reply = count % 10 == 0
+    _ban_msg_throttle[uid] = (count, next_at)
+    return reply
 
 
 def _format_seconds(seconds: int) -> str:
@@ -228,7 +246,8 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
     uid = message.from_user.id
     if uid in _vote_bans and time.time() < _vote_bans[uid]:
         remaining = int(_vote_bans[uid] - time.time())
-        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+        if _should_reply_ban(uid):
+            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
         return
 
     to_user = message.reply_to_message.from_user
@@ -306,13 +325,15 @@ async def cmd_stats(message: Message, ctx: AppContext) -> None:
 
     if uid in _vote_bans and now < _vote_bans[uid]:
         remaining = int(_vote_bans[uid] - now)
-        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+        if _should_reply_ban(uid):
+            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
         return
     _stats_history[uid] = [t for t in _stats_history[uid] if now - t < 60]
     _stats_history[uid].append(now)
     if len(_stats_history[uid]) >= _STATS_SPAM_COUNT:
         _vote_bans[uid] = now + _STATS_BAN_SECONDS
         _stats_history[uid] = []
+        _ban_msg_throttle.pop(uid, None)
         await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на голосование: 5 минут.")
         return
     if len(_stats_history[uid]) >= 2:
@@ -363,13 +384,15 @@ async def cmd_stats_n(message: Message, ctx: AppContext) -> None:
 
     if uid in _vote_bans and now < _vote_bans[uid]:
         remaining = int(_vote_bans[uid] - now)
-        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+        if _should_reply_ban(uid):
+            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
         return
     _stats_history[uid] = [t for t in _stats_history[uid] if now - t < 60]
     _stats_history[uid].append(now)
     if len(_stats_history[uid]) >= _STATS_SPAM_COUNT:
         _vote_bans[uid] = now + _STATS_BAN_SECONDS
         _stats_history[uid] = []
+        _ban_msg_throttle.pop(uid, None)
         await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на голосование: 5 минут.")
         return
     if len(_stats_history[uid]) >= 2:

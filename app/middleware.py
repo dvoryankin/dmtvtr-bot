@@ -184,8 +184,10 @@ class ActivityRatingMiddleware(BaseMiddleware):
                 _ban_until = _vote_bans.get(message.from_user.id, 0)
                 if _ban_until > time.time():
                     if is_reply and (is_negative or is_praise):
-                        remaining = int(_ban_until - time.time())
-                        await message.reply(f"Ты забанен. Осталось {remaining} сек.")
+                        from handlers.rating import _should_reply_ban
+                        if _should_reply_ban(message.from_user.id):
+                            remaining = int(_ban_until - time.time())
+                            await message.reply(f"Ты забанен. Осталось {remaining} сек.")
                         return
 
                 # Handle reply-minus.

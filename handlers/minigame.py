@@ -256,8 +256,10 @@ async def cmd_lal(message: Message, ctx: AppContext) -> None:
     now = time.time()
 
     if uid in _lal_bans and now < _lal_bans[uid]:
-        remaining = int(_lal_bans[uid] - now)
-        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+        from handlers.rating import _should_reply_ban
+        if _should_reply_ban(uid):
+            remaining = int(_lal_bans[uid] - now)
+            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
         return
     _lal_history[uid] = [t for t in _lal_history[uid] if now - t < 120]
     _lal_history[uid].append(now)
