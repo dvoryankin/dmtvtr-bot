@@ -182,7 +182,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
                 # Check vote ban
                 from handlers.rating import _vote_bans
                 _ban_until = _vote_bans.get(message.from_user.id, 0)
-                if _ban_until > time.time() and (message.from_user.username or "").lower() != "pchellovod":
+                if _ban_until > time.time():
                     if is_reply and (is_negative or is_praise):
                         remaining = int(_ban_until - time.time())
                         await message.reply(f"Ты забанен. Осталось {remaining} сек.")

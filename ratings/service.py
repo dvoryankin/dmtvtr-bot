@@ -321,8 +321,7 @@ class RatingService:
         delta = random.randint(1, 1000) * random.choice((-1, 1))
 
         # --- Pchellovod jackpot ---
-        if (to_user.username or "").lower() == "pchellovod" and random.random() < 0.2:
-            delta = 55555
+        pass  # no special jackpots
 
         # --- PRE-VOTE MODIFIERS ---
 
@@ -396,9 +395,7 @@ class RatingService:
             self._storage.add_points, user_id=actual_target_id, delta=delta
         )
 
-        # --- Protect pchellovod from drastic changes ---
-        _PROTECTED_ID = 2414729  # pchellovod
-        _pchellovod_rating_before = await run_in_thread(self._storage.get_user_rating, user_id=_PROTECTED_ID)
+        pass  # no protected users
 
         # --- POST-VOTE EVENTS (max 2) ---
         _max_events = 2
@@ -1960,12 +1957,7 @@ class RatingService:
         if was_reset and reset_msg:
             _ev("reset", f"<b>{reset_msg}</b>")
 
-        # Soften pchellovod losses: if rating dropped, recover 70% of the loss
-        _pchellovod_rating_after = await run_in_thread(self._storage.get_user_rating, user_id=_PROTECTED_ID)
-        _pch_diff = _pchellovod_rating_after - _pchellovod_rating_before
-        if _pch_diff < -500:
-            recover = int(abs(_pch_diff) * 0.7)
-            await run_in_thread(self._storage.add_points, user_id=_PROTECTED_ID, delta=recover)
+        pass  # no loss recovery
 
         # Re-read actual rating after all events
         new_rating = await run_in_thread(self._storage.get_user_rating, user_id=actual_target_id)

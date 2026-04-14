@@ -253,24 +253,22 @@ async def cmd_lal(message: Message, ctx: AppContext) -> None:
     if not message.from_user:
         return
     uid = message.from_user.id
-    is_pchellovod = (message.from_user.username or "").lower() == "pchellovod"
     now = time.time()
 
-    if not is_pchellovod:
-        if uid in _lal_bans and now < _lal_bans[uid]:
-            remaining = int(_lal_bans[uid] - now)
-            await message.answer(f"Ты забанен. Осталось {remaining} сек.")
-            return
-        _lal_history[uid] = [t for t in _lal_history[uid] if now - t < 120]
-        _lal_history[uid].append(now)
-        if len(_lal_history[uid]) >= _LAL_SPAM_COUNT:
-            _lal_bans[uid] = now + _LAL_BAN_SECONDS
-            _lal_history[uid] = []
-            await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на 5 минут.")
-            return
-        if len(_lal_history[uid]) >= 2 and now - _lal_history[uid][-2] < _LAL_COOLDOWN:
-            await message.answer(f"Кулдаун {_LAL_COOLDOWN} сек. Подожди.")
-            return
+    if uid in _lal_bans and now < _lal_bans[uid]:
+        remaining = int(_lal_bans[uid] - now)
+        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+        return
+    _lal_history[uid] = [t for t in _lal_history[uid] if now - t < 120]
+    _lal_history[uid].append(now)
+    if len(_lal_history[uid]) >= _LAL_SPAM_COUNT:
+        _lal_bans[uid] = now + _LAL_BAN_SECONDS
+        _lal_history[uid] = []
+        await message.answer("Вафлист, хуле ты сайт ковыряешь?\nБан на 1 минуту.")
+        return
+    if len(_lal_history[uid]) >= 2 and now - _lal_history[uid][-2] < _LAL_COOLDOWN:
+        await message.answer(f"Кулдаун {_LAL_COOLDOWN} сек. Подожди.")
+        return
 
     if message.reply_to_message and message.reply_to_message.from_user:
         to_user = message.reply_to_message.from_user
