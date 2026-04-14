@@ -230,15 +230,23 @@ def make_game(chat_id: int, voter_id: int, target_name: str, target_id: int) -> 
 
 
 @router.message(Command("lal"))
-async def cmd_lal(message: Message) -> None:
+async def cmd_lal(message: Message, ctx: AppContext) -> None:
     if not message.from_user:
         return
-    if not message.reply_to_message or not message.reply_to_message.from_user:
-        await message.answer("Ответь на сообщение того, кого хочешь заминировать: /lal")
-        return
-    to_user = message.reply_to_message.from_user
-    target_name = to_user.username if to_user.username else to_user.full_name
-    result = make_game(message.chat.id, message.from_user.id, target_name, to_user.id)
+    if message.reply_to_message and message.reply_to_message.from_user:
+        to_user = message.reply_to_message.from_user
+        target_name = to_user.username if to_user.username else to_user.full_name
+        target_id = to_user.id
+    else:
+        rand_user = await run_in_thread(
+            ctx.rating._storage.get_random_user, chat_id=message.chat.id, exclude_id=message.from_user.id
+        )
+        if not rand_user:
+            await message.answer("Некого минировать!")
+            return
+        target_name = rand_user.username or rand_user.first_name or str(rand_user.user_id)
+        target_id = rand_user.user_id
+    result = make_game(message.chat.id, message.from_user.id, target_name, target_id)
     if result:
         text, kb, _key = result
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
