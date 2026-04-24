@@ -306,13 +306,14 @@ class ActivityRatingMiddleware(BaseMiddleware):
 
 
 class GifSpamCleanupMiddleware(BaseMiddleware):
-    """Deletes GIF/animation spam from one target user in group chats."""
+    """Deletes GIF spam from one target user (threshold and immediate consecutive cleanup)."""
 
     def __init__(self, *, ctx: AppContext) -> None:
         super().__init__()
         self._ctx = ctx
         self._first_gif_message_by_chat_user: dict[tuple[int, int], int] = {}
         self._gif_counter_by_chat_user: dict[tuple[int, int], int] = {}
+        self._last_was_target_gif_by_chat: dict[int, bool] = {}
 
     async def __call__(
         self,
@@ -335,16 +336,20 @@ class GifSpamCleanupMiddleware(BaseMiddleware):
             return
 
         message: Message = event
+        chat_id = message.chat.id
         if message.chat.type not in {"group", "supergroup"}:
             return
         if not message.from_user or message.from_user.is_bot:
+            self._last_was_target_gif_by_chat[chat_id] = False
             return
-        if not self._is_target_user(message):
-            return
-        if not self._is_gif_like(message):
+        is_target_user = self._is_target_user(message)
+        is_gif = self._is_gif_like(message)
+        if not is_target_user or not is_gif:
+            # Any non-target-gif message breaks the "consecutive GIFs" chain in this chat.
+            self._last_was_target_gif_by_chat[chat_id] = False
             return
 
-        key = (message.chat.id, message.from_user.id)
+        key = (chat_id, message.from_user.id)
         threshold = max(1, self._ctx.settings.gif_cleanup_threshold)
         first_id = self._first_gif_message_by_chat_user.get(key)
         if first_id is None:
@@ -353,18 +358,19 @@ class GifSpamCleanupMiddleware(BaseMiddleware):
 
         current_count = self._gif_counter_by_chat_user.get(key, 0) + 1
         self._gif_counter_by_chat_user[key] = current_count
-        if current_count <= threshold:
+        is_first = message.message_id == first_id
+        consecutive_spam = self._last_was_target_gif_by_chat.get(chat_id, False) and not is_first
+        threshold_spam = current_count > threshold and not is_first
+        self._last_was_target_gif_by_chat[chat_id] = True
+        if not consecutive_spam and not threshold_spam:
             return
 
         bot: Bot | None = data.get("bot")
         if bot is None:
             return
 
-        if message.message_id == first_id:
-            return
-
         try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            await bot.delete_message(chat_id=chat_id, message_id=message.message_id)
         except (TelegramForbiddenError, TelegramBadRequest):
             # Missing rights or too old message - ignore.
             return
