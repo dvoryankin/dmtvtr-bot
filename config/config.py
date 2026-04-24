@@ -15,6 +15,13 @@ def _env_int(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an int, got: {raw!r}") from e
 
 
+def _env_str(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip()
+
+
 @dataclass(frozen=True)
 class Settings:
     token: str
@@ -34,6 +41,10 @@ class Settings:
     activity_cooldown_seconds: int
     activity_min_chars: int
     reply_plus_enabled: int
+    gif_cleanup_enabled: int
+    gif_cleanup_target_username: str
+    gif_cleanup_target_user_id: int
+    gif_cleanup_threshold: int
 
     font_paths: tuple[str, ...]
     unicode_font_paths: tuple[str, ...]
@@ -49,6 +60,10 @@ class Settings:
         activity_cooldown_seconds = _env_int("ACTIVITY_COOLDOWN_SECONDS", 15 * 60)
         activity_min_chars = _env_int("ACTIVITY_MIN_CHARS", 5)
         reply_plus_enabled = _env_int("REPLY_PLUS_ENABLED", 1)
+        gif_cleanup_enabled = _env_int("GIF_CLEANUP_ENABLED", 1)
+        gif_cleanup_target_username = _env_str("GIF_CLEANUP_TARGET_USERNAME", "themiple174").lstrip("@")
+        gif_cleanup_target_user_id = _env_int("GIF_CLEANUP_TARGET_USER_ID", 0)
+        gif_cleanup_threshold = _env_int("GIF_CLEANUP_THRESHOLD", 5)
 
         rating_db_path = Path(os.getenv("RATING_DB_PATH", str(base_dir / "ratings.sqlite3")))
 
@@ -80,6 +95,10 @@ class Settings:
             activity_cooldown_seconds=activity_cooldown_seconds,
             activity_min_chars=activity_min_chars,
             reply_plus_enabled=reply_plus_enabled,
+            gif_cleanup_enabled=gif_cleanup_enabled,
+            gif_cleanup_target_username=gif_cleanup_target_username,
+            gif_cleanup_target_user_id=gif_cleanup_target_user_id,
+            gif_cleanup_threshold=gif_cleanup_threshold,
             font_paths=font_paths,
             unicode_font_paths=unicode_font_paths,
         )

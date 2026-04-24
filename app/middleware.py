@@ -303,3 +303,91 @@ class ActivityRatingMiddleware(BaseMiddleware):
             return
         except TelegramAPIError:
             return
+
+
+class GifSpamCleanupMiddleware(BaseMiddleware):
+    """Deletes GIF/animation spam from one target user in group chats."""
+
+    def __init__(self, *, ctx: AppContext) -> None:
+        super().__init__()
+        self._ctx = ctx
+        self._first_gif_message_by_chat_user: dict[tuple[int, int], int] = {}
+        self._gif_counter_by_chat_user: dict[tuple[int, int], int] = {}
+
+    async def __call__(
+        self,
+        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
+        event: Any,
+        data: dict[str, Any],
+    ) -> Any:
+        result = await handler(event, data)
+        try:
+            await self._after(event, data)
+        except Exception:
+            # Never break updates because of cleanup logic.
+            logging.exception("GifSpamCleanupMiddleware failed")
+        return result
+
+    async def _after(self, event: Any, data: dict[str, Any]) -> None:
+        if not self._ctx.settings.gif_cleanup_enabled:
+            return
+        if not isinstance(event, Message):
+            return
+
+        message: Message = event
+        if message.chat.type not in {"group", "supergroup"}:
+            return
+        if not message.from_user or message.from_user.is_bot:
+            return
+        if not self._is_target_user(message):
+            return
+        if not self._is_gif_like(message):
+            return
+
+        key = (message.chat.id, message.from_user.id)
+        threshold = max(1, self._ctx.settings.gif_cleanup_threshold)
+        first_id = self._first_gif_message_by_chat_user.get(key)
+        if first_id is None:
+            self._first_gif_message_by_chat_user[key] = message.message_id
+            first_id = message.message_id
+
+        current_count = self._gif_counter_by_chat_user.get(key, 0) + 1
+        self._gif_counter_by_chat_user[key] = current_count
+        if current_count <= threshold:
+            return
+
+        bot: Bot | None = data.get("bot")
+        if bot is None:
+            return
+
+        if message.message_id == first_id:
+            return
+
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except (TelegramForbiddenError, TelegramBadRequest):
+            # Missing rights or too old message - ignore.
+            return
+        except TelegramAPIError:
+            return
+
+    def _is_target_user(self, message: Message) -> bool:
+        target_user_id = self._ctx.settings.gif_cleanup_target_user_id
+        if target_user_id > 0 and message.from_user and message.from_user.id == target_user_id:
+            return True
+
+        target_username = self._ctx.settings.gif_cleanup_target_username.strip().lower().lstrip("@")
+        username = (message.from_user.username or "").strip().lower()
+        return bool(target_username and username == target_username)
+
+    @staticmethod
+    def _is_gif_like(message: Message) -> bool:
+        if message.animation is not None:
+            return True
+        if message.document is not None:
+            mime = (message.document.mime_type or "").lower()
+            if mime == "image/gif":
+                return True
+            if message.document.file_name and message.document.file_name.lower().endswith(".gif"):
+                return True
+        return False
