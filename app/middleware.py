@@ -14,6 +14,12 @@ from ratings.badges import badge_for_rating
 from ratings.praise import is_negative_reply_text, is_praise_reply_text
 
 
+# Chats where the bot must not react to praise/negative words and must not award activity rating.
+RATING_DISABLED_CHATS: frozenset[int] = frozenset({
+    -1001130903628,
+})
+
+
 def _format_seconds(seconds: int) -> str:
     seconds = max(0, int(seconds))
     hours = seconds // 3600
@@ -98,6 +104,10 @@ class ActivityRatingMiddleware(BaseMiddleware):
                 username=getattr(message.chat, "username", None),
             )
             self._seen_chats.add(chat_id)
+
+        # Chats explicitly opted out of the rating system.
+        if chat_id in RATING_DISABLED_CHATS:
+            return
 
         # Ignore commands and command-like captions.
         maybe_text = (message.text or message.caption or "").lstrip()
