@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -21,18 +22,7 @@ _RATE_LIMIT_EXEMPT_USERNAMES = {"pchellovod"}
 _request_history: dict[int, list[float]] = {}
 _bans: dict[int, float] = {}
 _MOSCOW_TZ = timezone(timedelta(hours=3))
-_STATS_PERIODS = {
-    "сутки": ("сутки", 24 * 60 * 60),
-    "день": ("сутки", 24 * 60 * 60),
-    "24ч": ("сутки", 24 * 60 * 60),
-    "1д": ("сутки", 24 * 60 * 60),
-    "3д": ("3 дня", 3 * 24 * 60 * 60),
-    "3дня": ("3 дня", 3 * 24 * 60 * 60),
-    "неделя": ("неделю", 7 * 24 * 60 * 60),
-    "7д": ("неделю", 7 * 24 * 60 * 60),
-    "месяц": ("30 дней", 30 * 24 * 60 * 60),
-    "30д": ("30 дней", 30 * 24 * 60 * 60),
-}
+_STATS_COMMAND_RE = re.compile(r"^/(?:aquas|зал)(\d*)(?:@\w+)?$", re.IGNORECASE)
 
 
 def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
@@ -55,7 +45,7 @@ def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
     return 0
 
 
-@router.message(Command("aquastar", "аквастар", "зал"))
+@router.message(Command("aquastar", "аквастар"))
 async def cmd_aquastar(message: Message) -> None:
     username = (message.from_user.username or "").lower() if message.from_user is not None else ""
     if message.from_user is not None and username not in _RATE_LIMIT_EXEMPT_USERNAMES:
@@ -78,16 +68,19 @@ async def cmd_aquastar(message: Message) -> None:
     )
 
 
-@router.message(Command("aquastats", "залстат", "статзал"))
+@router.message(F.text.regexp(_STATS_COMMAND_RE))
 async def cmd_aquastar_stats(message: Message, ctx: AppContext) -> None:
-    parts = (message.text or "").split(maxsplit=1)
-    period_key = parts[1].strip().lower() if len(parts) > 1 else "сутки"
-    period = _STATS_PERIODS.get(period_key)
-    if period is None:
-        await message.answer("Период: сутки, 3д, неделя или месяц. Например: /aquastats неделя")
+    match = _STATS_COMMAND_RE.fullmatch(message.text or "")
+    if match is None:
         return
 
-    period_label, period_seconds = period
+    days = int(match.group(1) or "1")
+    if not 1 <= days <= 365:
+        await message.answer("Укажи период от 1 до 365 дней. Например: /aquas7 или /зал30")
+        return
+
+    period_label = f"{days} дн."
+    period_seconds = days * 24 * 60 * 60
     summary = await ctx.aquastar_stats.summary(period_seconds=period_seconds)
     if summary is None:
         await message.answer(
