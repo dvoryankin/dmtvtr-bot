@@ -22,7 +22,7 @@ _RATE_LIMIT_EXEMPT_USERNAMES = {"pchellovod"}
 _request_history: dict[int, list[float]] = {}
 _bans: dict[int, float] = {}
 _MOSCOW_TZ = timezone(timedelta(hours=3))
-_STATS_COMMAND_RE = re.compile(r"^/(?:aquas(\d*)|зал(\d+))(?:@\w+)?$", re.IGNORECASE)
+_STATS_COMMAND_RE = re.compile(r"^/(?:aquas|zal|зал)(\d+)(?:@\w+)?$", re.IGNORECASE)
 
 
 def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
@@ -45,7 +45,7 @@ def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
     return 0
 
 
-@router.message(Command("aquastar", "аквастар", "зал"))
+@router.message(Command("aquastar", "аквастар", "aquas", "zal", "зал"))
 async def cmd_aquastar(message: Message) -> None:
     username = (message.from_user.username or "").lower() if message.from_user is not None else ""
     if message.from_user is not None and username not in _RATE_LIMIT_EXEMPT_USERNAMES:
@@ -74,7 +74,7 @@ async def cmd_aquastar_stats(message: Message, ctx: AppContext) -> None:
     if match is None:
         return
 
-    days = int(match.group(1) or match.group(2) or "1")
+    days = int(match.group(1))
     if not 1 <= days <= 365:
         await message.answer("Укажи период от 1 до 365 дней. Например: /aquas7 или /зал30")
         return
