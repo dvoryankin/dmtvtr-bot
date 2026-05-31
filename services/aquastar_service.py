@@ -55,7 +55,8 @@ class _ClubRef:
 
 
 async def get_current_load() -> AquaStarLoad:
-    return await asyncio.to_thread(_get_current_load_sync)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _get_current_load_sync)
 
 
 def _get_current_load_sync() -> AquaStarLoad:
