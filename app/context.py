@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from config.config import Settings
 from demotivator.layout import LayoutConfig
 from ratings.service import RatingService
+from services.aquastar_stats import AquaStarStatsService
 from services.groq_service import GroqService
 
 
@@ -14,3 +15,4 @@ class AppContext:
     layout_cfg: LayoutConfig
     groq: GroqService
     rating: RatingService
+    aquastar_stats: AquaStarStatsService

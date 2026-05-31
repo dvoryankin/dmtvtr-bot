@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.context import AppContext
 from services.aquastar_service import AquaStarError, get_current_load
 
 
@@ -18,6 +20,19 @@ _RATE_LIMIT_BAN_SECONDS = 10 * 60
 _RATE_LIMIT_EXEMPT_USERNAMES = {"pchellovod"}
 _request_history: dict[int, list[float]] = {}
 _bans: dict[int, float] = {}
+_MOSCOW_TZ = timezone(timedelta(hours=3))
+_STATS_PERIODS = {
+    "сутки": ("сутки", 24 * 60 * 60),
+    "день": ("сутки", 24 * 60 * 60),
+    "24ч": ("сутки", 24 * 60 * 60),
+    "1д": ("сутки", 24 * 60 * 60),
+    "3д": ("3 дня", 3 * 24 * 60 * 60),
+    "3дня": ("3 дня", 3 * 24 * 60 * 60),
+    "неделя": ("неделю", 7 * 24 * 60 * 60),
+    "7д": ("неделю", 7 * 24 * 60 * 60),
+    "месяц": ("30 дней", 30 * 24 * 60 * 60),
+    "30д": ("30 дней", 30 * 24 * 60 * 60),
+}
 
 
 def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
@@ -60,4 +75,49 @@ async def cmd_aquastar(message: Message) -> None:
 
     await message.answer(
         f"🏊 AQUASTAR Павелецкая: сейчас {load.people} посетителей."
+    )
+
+
+@router.message(Command("aquastats", "залстат", "статзал"))
+async def cmd_aquastar_stats(message: Message, ctx: AppContext) -> None:
+    parts = (message.text or "").split(maxsplit=1)
+    period_key = parts[1].strip().lower() if len(parts) > 1 else "сутки"
+    period = _STATS_PERIODS.get(period_key)
+    if period is None:
+        await message.answer("Период: сутки, 3д, неделя или месяц. Например: /aquastats неделя")
+        return
+
+    period_label, period_seconds = period
+    summary = await ctx.aquastar_stats.summary(period_seconds=period_seconds)
+    if summary is None:
+        await message.answer(
+            f"📊 AQUASTAR Павелецкая за {period_label}: пока нет замеров. "
+            "Бот собирает их каждые 30 минут."
+        )
+        return
+
+    def format_sample(ts: int, people: int) -> str:
+        dt = datetime.fromtimestamp(ts, tz=_MOSCOW_TZ)
+        return f"{people} чел. ({dt:%d.%m %H:%M})"
+
+    quietest_hours = ", ".join(
+        f"{item.hour:02d}:00 — {item.average_people:.1f}"
+        for item in summary.quietest_hours
+    )
+    lowest_samples = ", ".join(
+        format_sample(sample.ts, sample.people)
+        for sample in sorted(summary.samples, key=lambda sample: (sample.people, sample.ts))[:3]
+    )
+    await message.answer(
+        "\n".join(
+            [
+                f"📊 AQUASTAR Павелецкая за {period_label}",
+                f"Замеров: {len(summary.samples)}",
+                f"Среднее: {summary.average_people:.1f} чел.",
+                f"Минимум: {format_sample(summary.min_sample.ts, summary.min_sample.people)}",
+                f"Максимум: {format_sample(summary.max_sample.ts, summary.max_sample.people)}",
+                f"Самые свободные часы (МСК, среднее): {quietest_hours}",
+                f"Самые низкие замеры: {lowest_samples}",
+            ]
+        )
     )

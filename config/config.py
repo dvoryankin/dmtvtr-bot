@@ -36,6 +36,7 @@ class Settings:
     max_concurrent_processes: int
 
     rating_db_path: Path
+    aquastar_stats_db_path: Path
     vote_cooldown_seconds: int
     activity_points_per_award: int
     activity_cooldown_seconds: int
@@ -66,6 +67,9 @@ class Settings:
         gif_cleanup_threshold = _env_int("GIF_CLEANUP_THRESHOLD", 5)
 
         rating_db_path = Path(os.getenv("RATING_DB_PATH", str(base_dir / "ratings.sqlite3")))
+        aquastar_stats_db_path = Path(
+            os.getenv("AQUASTAR_STATS_DB_PATH", str(base_dir / "aquastar_stats.sqlite3"))
+        )
 
         font_paths = (
             str(base_dir / "times.ttf"),
@@ -90,6 +94,7 @@ class Settings:
             overload_image_heavy=base_dir / "3.png",
             max_concurrent_processes=max_concurrent_processes,
             rating_db_path=rating_db_path,
+            aquastar_stats_db_path=aquastar_stats_db_path,
             vote_cooldown_seconds=vote_cooldown_seconds,
             activity_points_per_award=activity_points_per_award,
             activity_cooldown_seconds=activity_cooldown_seconds,

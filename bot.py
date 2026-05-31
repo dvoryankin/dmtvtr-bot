@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 import logging
 
@@ -15,6 +16,7 @@ from demotivator.layout import LayoutConfig
 from handlers import all_routers
 from ratings.service import RatingService
 from services.groq_service import GroqService
+from services.aquastar_stats import AquaStarStatsService, collect_aquastar_stats
 from utils.logging_setup import configure_logging
 from utils.temp_files import cleanup_old_temp_files
 
@@ -36,6 +38,8 @@ async def main() -> None:
         activity_cooldown_seconds=settings.activity_cooldown_seconds,
     )
     rating.init_db()
+    aquastar_stats = AquaStarStatsService(db_path=settings.aquastar_stats_db_path)
+    aquastar_stats.init_db()
 
     ctx = AppContext(
         settings=settings,
@@ -45,6 +49,7 @@ async def main() -> None:
         ),
         groq=GroqService(api_key=settings.groq_api_key),
         rating=rating,
+        aquastar_stats=aquastar_stats,
     )
 
     bot = Bot(token=settings.token)
@@ -61,7 +66,16 @@ async def main() -> None:
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Bot started")
     cleanup_old_temp_files()
-    await dp.start_polling(bot)
+    aquastar_collector = asyncio.create_task(
+        collect_aquastar_stats(aquastar_stats),
+        name="aquastar-stats-collector",
+    )
+    try:
+        await dp.start_polling(bot)
+    finally:
+        aquastar_collector.cancel()
+        with suppress(asyncio.CancelledError):
+            await aquastar_collector
 
 
 if __name__ == "__main__":
