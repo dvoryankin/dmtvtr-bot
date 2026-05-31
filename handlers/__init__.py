@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from aiogram import Router
 
+from handlers.aquastar import router as aquastar_router
 from handlers.debug import router as debug_router
 from handlers.demotivator import router as demotivator_router
 from handlers.emoji import router as emoji_router
@@ -18,6 +19,7 @@ from handlers.minigame import router as minigame_router
 def all_routers() -> list[Router]:
     # Order matters for some generic handlers (e.g. emoji naming text input).
     return [
+        aquastar_router,
         quiz_router,
         minigame_router,
         get_notify_router,
