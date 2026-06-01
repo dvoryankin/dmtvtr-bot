@@ -48,16 +48,32 @@ def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
     return 0
 
 
+async def _reject_rate_limited(message: Message) -> bool:
+    if message.from_user is None:
+        return False
+
+    username = (message.from_user.username or "").lower()
+    if username in _RATE_LIMIT_EXEMPT_USERNAMES:
+        return False
+
+    remaining = _rate_limit_remaining(message.from_user.id)
+    if not remaining:
+        return False
+
+    if remaining == _RATE_LIMIT_BAN_SECONDS:
+        await message.answer(
+            "Вафлист, хуле ты сайт ковыряешь?\n"
+            "Бан на команды AquaStar: 10 минут."
+        )
+    else:
+        await message.answer(f"Ты забанен. Осталось {remaining} сек.")
+    return True
+
+
 @router.message(Command("aquastar", "аквастар", "aquas", "zal", "зал"))
 async def cmd_aquastar(message: Message) -> None:
-    username = (message.from_user.username or "").lower() if message.from_user is not None else ""
-    if message.from_user is not None and username not in _RATE_LIMIT_EXEMPT_USERNAMES:
-        remaining = _rate_limit_remaining(message.from_user.id)
-        if remaining:
-            await message.answer(
-                f"Слишком много запросов к AquaStar. Бан на эту команду ещё {remaining} сек."
-            )
-            return
+    if await _reject_rate_limited(message):
+        return
 
     try:
         load = await get_current_load()
@@ -75,6 +91,8 @@ async def cmd_aquastar(message: Message) -> None:
 async def cmd_aquastar_stats(message: Message, ctx: AppContext) -> None:
     match = _STATS_COMMAND_RE.fullmatch(message.text or "")
     if match is None:
+        return
+    if await _reject_rate_limited(message):
         return
 
     days = int(match.group(1))
@@ -121,6 +139,9 @@ async def cmd_aquastar_stats(message: Message, ctx: AppContext) -> None:
 
 @router.message(Command("aquag", "zalg", "залг", "графзал"))
 async def cmd_aquastar_chart(message: Message, ctx: AppContext) -> None:
+    if await _reject_rate_limited(message):
+        return
+
     points = await ctx.aquastar_stats.chart(
         period_seconds=_CHART_PERIOD_SECONDS,
         bucket_seconds=_CHART_BUCKET_SECONDS,

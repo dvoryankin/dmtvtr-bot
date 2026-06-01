@@ -316,7 +316,7 @@ class ActivityRatingMiddleware(BaseMiddleware):
 
 
 class GifSpamCleanupMiddleware(BaseMiddleware):
-    """Deletes GIF spam from one target user (threshold and immediate consecutive cleanup)."""
+    """Deletes GIF, sticker, and /popov spam from one target user."""
 
     def __init__(self, *, ctx: AppContext) -> None:
         super().__init__()
@@ -324,6 +324,10 @@ class GifSpamCleanupMiddleware(BaseMiddleware):
         self._first_gif_message_by_chat_user: dict[tuple[int, int], int] = {}
         self._gif_counter_by_chat_user: dict[tuple[int, int], int] = {}
         self._last_was_target_gif_by_chat: dict[int, bool] = {}
+        self._sticker_chain_by_chat_user: dict[tuple[int, int], list[int]] = {}
+        self._blocked_sticker_chains: set[tuple[int, int]] = set()
+        self._popov_history_by_chat_user: dict[tuple[int, int], list[tuple[float, int]]] = {}
+        self._popov_blocked_until_by_chat_user: dict[tuple[int, int], float] = {}
 
     async def __call__(
         self,
@@ -351,8 +355,15 @@ class GifSpamCleanupMiddleware(BaseMiddleware):
             return
         if not message.from_user or message.from_user.is_bot:
             self._last_was_target_gif_by_chat[chat_id] = False
+            self._reset_sticker_chains(chat_id)
             return
         is_target_user = self._is_target_user(message)
+        if is_target_user:
+            await self._cleanup_popov_spam(message, data)
+            await self._cleanup_sticker_spam(message, data)
+        elif message.sticker is not None:
+            self._reset_sticker_chains(chat_id)
+
         is_gif = self._is_gif_like(message)
         if not is_target_user or not is_gif:
             # Any non-target-gif message breaks the "consecutive GIFs" chain in this chat.
@@ -386,6 +397,70 @@ class GifSpamCleanupMiddleware(BaseMiddleware):
             return
         except TelegramAPIError:
             return
+
+    async def _cleanup_sticker_spam(self, message: Message, data: dict[str, Any]) -> None:
+        key = (message.chat.id, message.from_user.id)
+        if message.sticker is None:
+            self._sticker_chain_by_chat_user.pop(key, None)
+            self._blocked_sticker_chains.discard(key)
+            return
+
+        chain = self._sticker_chain_by_chat_user.setdefault(key, [])
+        chain.append(message.message_id)
+        threshold = max(2, self._ctx.settings.sticker_cleanup_threshold)
+        if key in self._blocked_sticker_chains:
+            await self._delete_messages(message.chat.id, [message.message_id], data)
+            return
+        if len(chain) < threshold:
+            return
+
+        self._blocked_sticker_chains.add(key)
+        await self._delete_messages(message.chat.id, chain[1:], data)
+
+    async def _cleanup_popov_spam(self, message: Message, data: dict[str, Any]) -> None:
+        if (message.text or "").split("@", 1)[0].lower() != "/popov":
+            return
+
+        key = (message.chat.id, message.from_user.id)
+        now = time.monotonic()
+        blocked_until = self._popov_blocked_until_by_chat_user.get(key, 0)
+        if now < blocked_until:
+            await self._delete_messages(message.chat.id, [message.message_id], data)
+            return
+
+        cutoff = now - 60
+        history = [
+            item for item in self._popov_history_by_chat_user.get(key, [])
+            if item[0] > cutoff
+        ]
+        history.append((now, message.message_id))
+        self._popov_history_by_chat_user[key] = history
+
+        threshold = max(2, self._ctx.settings.sticker_cleanup_threshold)
+        if len(history) < threshold:
+            return
+
+        self._popov_blocked_until_by_chat_user[key] = now + 60
+        await self._delete_messages(message.chat.id, [message_id for _, message_id in history[1:]], data)
+
+    @staticmethod
+    async def _delete_messages(chat_id: int, message_ids: list[int], data: dict[str, Any]) -> None:
+        bot: Bot | None = data.get("bot")
+        if bot is None:
+            return
+        for message_id in message_ids:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            except (TelegramForbiddenError, TelegramBadRequest):
+                continue
+            except TelegramAPIError:
+                continue
+
+    def _reset_sticker_chains(self, chat_id: int) -> None:
+        keys = [key for key in self._sticker_chain_by_chat_user if key[0] == chat_id]
+        for key in keys:
+            self._sticker_chain_by_chat_user.pop(key, None)
+            self._blocked_sticker_chains.discard(key)
 
     def _is_target_user(self, message: Message) -> bool:
         target_user_id = self._ctx.settings.gif_cleanup_target_user_id

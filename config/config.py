@@ -46,6 +46,7 @@ class Settings:
     gif_cleanup_target_username: str
     gif_cleanup_target_user_id: int
     gif_cleanup_threshold: int
+    sticker_cleanup_threshold: int
 
     font_paths: tuple[str, ...]
     unicode_font_paths: tuple[str, ...]
@@ -65,6 +66,7 @@ class Settings:
         gif_cleanup_target_username = _env_str("GIF_CLEANUP_TARGET_USERNAME", "themiple174").lstrip("@")
         gif_cleanup_target_user_id = _env_int("GIF_CLEANUP_TARGET_USER_ID", 0)
         gif_cleanup_threshold = _env_int("GIF_CLEANUP_THRESHOLD", 5)
+        sticker_cleanup_threshold = _env_int("STICKER_CLEANUP_THRESHOLD", 4)
 
         rating_db_path = Path(os.getenv("RATING_DB_PATH", str(base_dir / "ratings.sqlite3")))
         aquastar_stats_db_path = Path(
@@ -104,6 +106,7 @@ class Settings:
             gif_cleanup_target_username=gif_cleanup_target_username,
             gif_cleanup_target_user_id=gif_cleanup_target_user_id,
             gif_cleanup_threshold=gif_cleanup_threshold,
+            sticker_cleanup_threshold=sticker_cleanup_threshold,
             font_paths=font_paths,
             unicode_font_paths=unicode_font_paths,
         )
