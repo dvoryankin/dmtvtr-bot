@@ -23,6 +23,9 @@ _request_history: dict[int, list[float]] = {}
 _bans: dict[int, float] = {}
 _MOSCOW_TZ = timezone(timedelta(hours=3))
 _STATS_COMMAND_RE = re.compile(r"^/(?:aquas|zal|зал)(\d+)(?:@\w+)?$", re.IGNORECASE)
+_CHART_PERIOD_SECONDS = 24 * 60 * 60
+_CHART_BUCKET_SECONDS = 30 * 60
+_CHART_MAX_BAR_WIDTH = 32
 
 
 def _rate_limit_remaining(user_id: int, *, now: float | None = None) -> int:
@@ -114,3 +117,34 @@ async def cmd_aquastar_stats(message: Message, ctx: AppContext) -> None:
             ]
         )
     )
+
+
+@router.message(Command("aquag", "zalg", "залг", "графзал"))
+async def cmd_aquastar_chart(message: Message, ctx: AppContext) -> None:
+    points = await ctx.aquastar_stats.chart(
+        period_seconds=_CHART_PERIOD_SECONDS,
+        bucket_seconds=_CHART_BUCKET_SECONDS,
+    )
+    if not points:
+        await message.answer(
+            "AQUASTAR Павелецкая: пока нет замеров. Бот собирает их каждые 30 минут."
+        )
+        return
+
+    minimum = min(point.average_people for point in points)
+    maximum = max(point.average_people for point in points)
+    average = sum(point.average_people for point in points) / len(points)
+
+    lines = [
+        "AQUASTAR Павелецкая: график за сутки",
+        f"Точек: {len(points)}, шаг 30 минут",
+        f"Мин: {minimum:.0f}  Макс: {maximum:.0f}  Среднее: {average:.1f}",
+        "",
+    ]
+    for point in points:
+        dt = datetime.fromtimestamp(point.ts, tz=_MOSCOW_TZ)
+        scale = max(maximum, 1)
+        bar_width = max(1, round(point.average_people / scale * _CHART_MAX_BAR_WIDTH))
+        lines.append(f"{dt:%d.%m %H:%M} | {'█' * bar_width} {point.average_people:.0f}")
+
+    await message.answer("<pre>" + "\n".join(lines) + "</pre>", parse_mode="HTML")

@@ -34,6 +34,7 @@ async def cmd_help(message: Message) -> None:
 /aquastar, /aquas, /zal, /зал — текущая загруженность AQUASTAR Павелецкая
 /aquas1, /aquas3, /aquas7, /aquas30 — история AQUASTAR за указанное число дней
 /zal1, /zal3, /zal7, /zal30 и /зал1, /зал3, /зал7, /зал30 — то же самое
+/aquag, /zalg, /залг, /графзал — текстовый график AQUASTAR за сутки
 
 **Рейтинг и лычки:**
 /profile — мой профиль (рейтинг + лычка)

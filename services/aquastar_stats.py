@@ -38,6 +38,13 @@ class AquaStarStatsSummary:
     quietest_hours: tuple[AquaStarHourSummary, ...]
 
 
+@dataclass(frozen=True)
+class AquaStarChartPoint:
+    ts: int
+    average_people: float
+    sample_count: int
+
+
 class AquaStarStatsStorage:
     def __init__(self, *, db_path: Path) -> None:
         self._db_path = db_path
@@ -115,6 +122,31 @@ class AquaStarStatsStorage:
             quietest_hours=quietest_hours,
         )
 
+    def chart(self, *, since_ts: int, bucket_seconds: int) -> tuple[AquaStarChartPoint, ...]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    (ts / ?) * ? AS bucket_ts,
+                    AVG(people) AS average_people,
+                    COUNT(*) AS sample_count
+                FROM aquastar_samples
+                WHERE ts >= ?
+                GROUP BY bucket_ts
+                ORDER BY bucket_ts
+                """,
+                (bucket_seconds, bucket_seconds, since_ts),
+            ).fetchall()
+
+        return tuple(
+            AquaStarChartPoint(
+                ts=int(row["bucket_ts"]),
+                average_people=float(row["average_people"]),
+                sample_count=int(row["sample_count"]),
+            )
+            for row in rows
+        )
+
 
 class AquaStarStatsService:
     def __init__(self, *, db_path: Path) -> None:
@@ -132,6 +164,19 @@ class AquaStarStatsService:
         since_ts = int(time.time()) - period_seconds
         return await run_in_thread(self._storage.summary, since_ts=since_ts)
 
+    async def chart(
+        self,
+        *,
+        period_seconds: int,
+        bucket_seconds: int,
+    ) -> tuple[AquaStarChartPoint, ...]:
+        since_ts = int(time.time()) - period_seconds
+        return await run_in_thread(
+            self._storage.chart,
+            since_ts=since_ts,
+            bucket_seconds=bucket_seconds,
+        )
+
 
 async def collect_aquastar_stats(stats: AquaStarStatsService) -> None:
     while True:
@@ -142,4 +187,3 @@ async def collect_aquastar_stats(stats: AquaStarStatsService) -> None:
         except Exception:
             logging.exception("Unexpected AquaStar background sample failure")
         await asyncio.sleep(_COLLECT_INTERVAL_SECONDS)
-
