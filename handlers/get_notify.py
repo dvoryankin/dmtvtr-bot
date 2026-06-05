@@ -56,7 +56,7 @@ def message_link(chat_id: int, message_id: int) -> str | None:
 
 
 class GetNotifyMiddleware(BaseMiddleware):
-    """Watches message IDs in БRT and announces gets in chat."""
+    """Watches message IDs in БRT and DMs @pchellovod when a get is approaching."""
 
     async def __call__(
         self,
@@ -105,13 +105,8 @@ class GetNotifyMiddleware(BaseMiddleware):
             )
 
         try:
-            await bot.send_message(chat_id=event.chat.id, text=text)
-        except Exception:
-            logging.exception("Failed to send get notification to chat %s", event.chat.id)
-
-        try:
             await bot.send_message(chat_id=_NOTIFY_USER_ID, text=text)
         except Exception:
-            logging.debug("Failed to DM user %s about get", _NOTIFY_USER_ID)
+            logging.warning("Failed to DM user %s about get", _NOTIFY_USER_ID, exc_info=True)
 
         return result
