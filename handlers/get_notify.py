@@ -16,6 +16,7 @@ _WATCH_CHAT_ID = -1003681962162
 _notified: dict[int, int] = {}
 
 _THRESHOLDS = [100, 15, 5]  # notify at these remaining counts
+_ROUND_GET_STEP = 1000
 
 
 def is_beautiful(n: int) -> bool:
@@ -36,9 +37,30 @@ def next_beautiful(after: int) -> int:
     return 0
 
 
+def next_round_get(after: int) -> int:
+    """Find the next round message-id get."""
+    return ((after // _ROUND_GET_STEP) + 1) * _ROUND_GET_STEP
+
+
+def next_get(after: int) -> int:
+    """Find the next tracked get: round thousands or repdigits."""
+    candidates = [next_round_get(after)]
+    beautiful = next_beautiful(after)
+    if beautiful:
+        candidates.append(beautiful)
+    return min(candidates)
+
+
+def notification_threshold(remaining: int, previous_threshold: int | None) -> int | None:
+    """Return the most specific newly crossed threshold."""
+    for threshold in sorted(_THRESHOLDS):
+        if remaining <= threshold and (previous_threshold is None or previous_threshold > threshold):
+            return threshold
+    return None
+
 
 class GetNotifyMiddleware(BaseMiddleware):
-    """Watches message IDs in БRT and DMs @pchellovod when a repdigit get is approaching."""
+    """Watches message IDs in БRT and DMs @pchellovod when a get is approaching."""
 
     async def __call__(
         self,
@@ -54,23 +76,16 @@ class GetNotifyMiddleware(BaseMiddleware):
             return result
 
         msg_id = event.message_id
-        nxt = next_beautiful(msg_id)
+        nxt = next_get(msg_id)
         if nxt == 0:
             return result
 
         remaining = nxt - msg_id
 
-        # Find which threshold we just crossed
-        should_notify = False
-        prev = _notified.get(nxt)
-        for t in _THRESHOLDS:
-            if remaining <= t and (prev is None or prev > t):
-                should_notify = True
-                _notified[nxt] = remaining
-                break
-
-        if not should_notify:
+        threshold = notification_threshold(remaining, _notified.get(nxt))
+        if threshold is None:
             return result
+        _notified[nxt] = threshold
 
         bot: Bot | None = data.get("bot")
         if bot is None:
