@@ -12,43 +12,31 @@ router = Router()
 _NOTIFY_USER_ID = 2414729
 _WATCH_CHAT_ID = -1003681962162
 
-# {get_number: last_remaining_when_notified}
+# {get_number: last threshold that was notified; 0 means the get itself was announced}
 _notified: dict[int, int] = {}
 
 _THRESHOLDS = [100, 15, 5]  # notify at these remaining counts
-_ROUND_GET_STEP = 1000
+_BEAUTIFUL_SUFFIX_WIDTH = 5
 
 
 def is_beautiful(n: int) -> bool:
-    """Repdigits only: 77777, 88888, 99999, 111111, etc."""
+    """Numbers ending with five equal digits: 77777, 133333, 222222, etc."""
     s = str(n)
-    return len(s) >= 5 and len(set(s)) == 1
+    return len(s) >= _BEAUTIFUL_SUFFIX_WIDTH and len(set(s[-_BEAUTIFUL_SUFFIX_WIDTH:])) == 1
 
 
 def next_beautiful(after: int) -> int:
-    """Find the next repdigit after `after`."""
-    # Repdigits: 11111, 22222, ..., 99999, 111111, 222222, ...
-    # Generate them directly instead of scanning
-    for length in range(5, 10):
+    """Find the next message-id with a beautiful repeated-digit suffix."""
+    suffix_base = 10 ** _BEAUTIFUL_SUFFIX_WIDTH
+    repeated_factor = int("1" * _BEAUTIFUL_SUFFIX_WIDTH)
+    start_prefix = max(0, after // suffix_base)
+    candidates: list[int] = []
+    for prefix in range(start_prefix, start_prefix + 2):
         for digit in range(1, 10):
-            n = int(str(digit) * length)
-            if n > after:
-                return n
-    return 0
-
-
-def next_round_get(after: int) -> int:
-    """Find the next round message-id get."""
-    return ((after // _ROUND_GET_STEP) + 1) * _ROUND_GET_STEP
-
-
-def next_get(after: int) -> int:
-    """Find the next tracked get: round thousands or repdigits."""
-    candidates = [next_round_get(after)]
-    beautiful = next_beautiful(after)
-    if beautiful:
-        candidates.append(beautiful)
-    return min(candidates)
+            n = prefix * suffix_base + digit * repeated_factor
+            if n > after and is_beautiful(n):
+                candidates.append(n)
+    return min(candidates) if candidates else 0
 
 
 def notification_threshold(remaining: int, previous_threshold: int | None) -> int | None:
@@ -59,8 +47,16 @@ def notification_threshold(remaining: int, previous_threshold: int | None) -> in
     return None
 
 
+def message_link(chat_id: int, message_id: int) -> str | None:
+    """Build a t.me/c link for private supergroups."""
+    chat_id_str = str(abs(chat_id))
+    if not chat_id_str.startswith("100"):
+        return None
+    return f"https://t.me/c/{chat_id_str[3:]}/{message_id}"
+
+
 class GetNotifyMiddleware(BaseMiddleware):
-    """Watches message IDs in БRT and DMs @pchellovod when a get is approaching."""
+    """Watches message IDs in БRT and announces gets in chat."""
 
     async def __call__(
         self,
@@ -76,27 +72,42 @@ class GetNotifyMiddleware(BaseMiddleware):
             return result
 
         msg_id = event.message_id
-        nxt = next_get(msg_id)
-        if nxt == 0:
-            return result
-
-        remaining = nxt - msg_id
-
-        threshold = notification_threshold(remaining, _notified.get(nxt))
-        if threshold is None:
-            return result
-        _notified[nxt] = threshold
+        is_get = is_beautiful(msg_id)
+        nxt = msg_id if is_get else next_beautiful(msg_id)
+        if is_get:
+            if _notified.get(nxt) == 0:
+                return result
+            _notified[nxt] = 0
+        else:
+            if nxt == 0:
+                return result
+            remaining = nxt - msg_id
+            threshold = notification_threshold(remaining, _notified.get(nxt))
+            if threshold is None:
+                return result
+            _notified[nxt] = threshold
 
         bot: Bot | None = data.get("bot")
         if bot is None:
             return result
 
-        chat_title = getattr(event.chat, "title", None) or "БRT"
-        text = (
-            f"🎯 Гет {nxt} приближается!\n"
-            f"Чат: {chat_title}\n"
-            f"Сейчас: {msg_id} (осталось ~{remaining})"
-        )
+        link = message_link(event.chat.id, msg_id)
+        if is_get:
+            text = f"🥳 Поздравляем! Сообщение №{nxt}"
+            if link:
+                text += f":\n\n— {link}"
+        else:
+            chat_title = getattr(event.chat, "title", None) or "БRT"
+            text = (
+                f"🎯 Гет {nxt} приближается!\n"
+                f"Чат: {chat_title}\n"
+                f"Сейчас: {msg_id} (осталось ~{nxt - msg_id})"
+            )
+
+        try:
+            await bot.send_message(chat_id=event.chat.id, text=text)
+        except Exception:
+            logging.exception("Failed to send get notification to chat %s", event.chat.id)
 
         try:
             await bot.send_message(chat_id=_NOTIFY_USER_ID, text=text)
