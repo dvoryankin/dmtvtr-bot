@@ -1,0 +1,1 @@
+0 19 * * 5 /root/bots/scripts/friday_gif.sh >> /var/log/dmtvtr-friday-gif.log 2>&1
