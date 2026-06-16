@@ -1,0 +1,1 @@
+0 19 * * 5 /root/bots/scripts/friday_besp.sh >> /var/log/dmtvtr-friday-besp.log 2>&1
