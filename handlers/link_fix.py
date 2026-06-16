@@ -8,8 +8,6 @@ router = Router(name="link_fix")
 
 # Domain replacement map: (pattern, replacement)
 _FIXES: list[tuple[re.Pattern[str], str]] = [
-    # Instagram → uuinstagram (current working InstaFix domain)
-    (re.compile(r'https?://(?:www\.)?instagram\.com/'), 'https://www.uuinstagram.com/'),
     # Twitter → fxtwitter
     (re.compile(r'https?://(?:www\.)?twitter\.com/'), 'https://fxtwitter.com/'),
     # X.com → fixupx
@@ -20,7 +18,7 @@ _FIXES: list[tuple[re.Pattern[str], str]] = [
 
 # Match any URL from supported platforms
 _URL_RE = re.compile(
-    r'https?://(?:www\.)?(?:instagram\.com|twitter\.com|x\.com|tiktok\.com)/\S+'
+    r'https?://(?:www\.)?(?:twitter\.com|x\.com|tiktok\.com)/\S+'
 )
 
 
