@@ -34,7 +34,6 @@ class VoteResult:
     crazy_text: str | None = None
     events: list[str] = field(default_factory=list)
     send_sticker: bool = False
-    send_xuan_sticker: bool = False
     ghost: bool = False
     display_delta: int | None = None
     minigame: tuple | None = None  # (text, kb, game_key) if triggered
@@ -141,6 +140,7 @@ class RatingService:
         self._activity_cooldown_seconds = activity_cooldown_seconds
         self._vote_counter: int = 0
         self._next_crazy: int = random.randint(15, 25)
+        self._votes_until_sticker: int = random.randint(3, 5)
         self._tax_counter: int = 0
         self._denom_counter: int = 0
         self._next_multiplier: bool = False
@@ -1962,7 +1962,7 @@ class RatingService:
         # Re-read actual rating after all events
         new_rating = await run_in_thread(self._storage.get_user_rating, user_id=actual_target_id)
 
-        # Stats & sticker choice (only one pack per vote)
+        # Stats and a visual accent after a random interval of 3-5 successful votes.
         self._stats["total_votes"] += 1
         event_count = len(events)
         self._event_total += event_count
@@ -1971,14 +1971,10 @@ class RatingService:
         crazy = self._check_crazy()
         has_extras = was_reset or crazy is not None or event_count > 0
 
-        # Send one sticker every 5 votes
-        send_sticker = False
-        send_xuan = False
-        if self._stats["total_votes"] % 5 == 0:
-            if random.random() < 0.5:
-                send_xuan = True
-            else:
-                send_sticker = True
+        self._votes_until_sticker -= 1
+        send_sticker = self._votes_until_sticker <= 0
+        if send_sticker:
+            self._votes_until_sticker = random.randint(3, 5)
 
         return VoteResult(
             ok=True,
@@ -1988,7 +1984,6 @@ class RatingService:
             crazy_text=crazy,
             events=events,
             send_sticker=send_sticker,
-            send_xuan_sticker=send_xuan,
             ghost=ghost,
             display_delta=display_delta,
         )

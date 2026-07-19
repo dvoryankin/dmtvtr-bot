@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 import time
 from typing import Any, Awaitable, Callable
 
@@ -11,6 +10,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 
 from app.context import AppContext
 from ratings.badges import badge_for_rating
+from ratings.presentation import compact_vote_text, send_vote_effect_sticker
 from ratings.praise import is_negative_reply_text, is_praise_reply_text
 
 
@@ -136,37 +136,14 @@ class ActivityRatingMiddleware(BaseMiddleware):
                     if vr.ok:
                         profile = await self._ctx.rating.profile(user=to_user)
                         target = f"{to_user.username}" if to_user.username else to_user.full_name
-                        shown_delta = vr.display_delta if vr.display_delta is not None else vr.delta
-                        sign = f"+{shown_delta}" if shown_delta >= 0 else str(shown_delta)
-                        if vr.ghost:
-                            text = f"👻 {target} — ничего не произошло..."
-                        else:
-                            text = f"{sign} {target} → {vr.new_rating} ({profile.badge})"
-                        if vr.delta == 55555:
-                            text += f"\n\n<b>🎰 {target} — У ВАС РЕЙТИНГ {vr.new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
-                            text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
-                        if vr.crazy_text:
-                            text += f"\n\n<b>🧠 {vr.crazy_text}</b>"
-                        if vr.was_reset:
-                            text += f"\n\n<b>🔄 {target} — ТЫ ОБНУЛИРОВАН !!!</b>"
-                        for ev in vr.events:
-                            text += f"\n\n{ev}"
-                        await message.reply(text, parse_mode="HTML")
+                        text = compact_vote_text(
+                            result=vr,
+                            display_name=target,
+                            badge=profile.badge,
+                        )
+                        await message.reply(text)
                         if vr.send_sticker and bot is not None:
-                            try:
-                                sset = await bot.get_sticker_set("likvidacia_blcktlk")
-                                if sset.stickers:
-                                    sticker = random.choice(sset.stickers)
-                                    await message.answer_sticker(sticker.file_id)
-                            except Exception:
-                                pass
-                        if vr.send_xuan_sticker and bot is not None:
-                            try:
-                                sset = await bot.get_sticker_set("xuan_sol_by_fStikBot")
-                                if sset.stickers:
-                                    await message.answer_sticker(sset.stickers[0].file_id)
-                            except Exception:
-                                pass
+                            await send_vote_effect_sticker(bot=bot, message=message)
                         if vr.minigame is not None:
                             mg_text, mg_kb, _mg_key = vr.minigame
                             try:

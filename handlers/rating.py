@@ -13,6 +13,7 @@ from aiogram.types import Message, User
 
 from app.context import AppContext
 from ratings.badges import BADGES, badge_for_rating
+from ratings.presentation import compact_vote_text, send_vote_effect_sticker
 
 
 router = Router(name="rating")
@@ -268,37 +269,14 @@ async def cmd_plus(message: Message, bot: Bot, ctx: AppContext) -> None:
         return
 
     profile = await ctx.rating.profile(user=to_user)
-    shown_delta = vr.display_delta if vr.display_delta is not None else vr.delta
-    sign = f"+{shown_delta}" if shown_delta >= 0 else str(shown_delta)
-    if vr.ghost:
-        text = f"👻 {profile.display_name} — ничего не произошло..."
-    else:
-        text = f"{sign} {profile.display_name} → {vr.new_rating} ({profile.badge})"
-    if vr.delta == 55555:
-        text += f"\n\n<b>🎰 {profile.display_name} — У ВАС РЕЙТИНГ {vr.new_rating}, ВЫ ВЫИГРАЛИ !!!</b>"
-        text += f"\n\nПчеловод передаёт вам: <tg-spoiler>мозги не ебите</tg-spoiler>"
-    if vr.crazy_text:
-        text += f"\n\n<b>🧠 {vr.crazy_text}</b>"
-    if vr.was_reset:
-        text += f"\n\n<b>🔄 {profile.display_name} — ТЫ ОБНУЛИРОВАН !!!</b>"
-    for ev in vr.events:
-        text += f"\n\n{ev}"
-    await message.answer(text, parse_mode="HTML")
+    text = compact_vote_text(
+        result=vr,
+        display_name=profile.display_name,
+        badge=profile.badge,
+    )
+    await message.answer(text)
     if vr.send_sticker:
-        try:
-            sset = await bot.get_sticker_set("likvidacia_blcktlk")
-            if sset.stickers:
-                sticker = random.choice(sset.stickers)
-                await message.answer_sticker(sticker.file_id)
-        except Exception:
-            pass
-    if vr.send_xuan_sticker:
-        try:
-            sset = await bot.get_sticker_set("xuan_sol_by_fStikBot")
-            if sset.stickers:
-                await message.answer_sticker(sset.stickers[0].file_id)
-        except Exception:
-            pass
+        await send_vote_effect_sticker(bot=bot, message=message)
 
     if vr.minigame is not None:
         mg_text, mg_kb, _mg_key = vr.minigame
