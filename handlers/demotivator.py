@@ -119,7 +119,7 @@ async def handle_media_with_caption(message: Message, bot: Bot, ctx: AppContext)
                 pass
 
 
-@router.message(Command("d", "dd", "д", "дд", "inv", "vin"))
+@router.message(Command("d", "dd", "д", "дд", "inv", "vin", ignore_case=True))
 async def handle_command(message: Message, bot: Bot, command: CommandObject, ctx: AppContext) -> None:
     if not message.from_user:
         return

@@ -41,7 +41,11 @@ def _fix_urls(text: str) -> list[str]:
 
 @router.message(F.text.func(_has_fixable_url))
 async def fix_links_in_text(message: Message) -> None:
-    fixed = _fix_urls(message.text)
+    from handlers.x_video import handled_urls
+    from services.x_video import canonical_url
+    handled = handled_urls(message)
+    text = _URL_RE.sub(lambda m: '' if canonical_url(m.group().rstrip('.,!?:;)]}\"\'')) in handled else m.group(), message.text)
+    fixed = _fix_urls(text)
     if fixed:
         await message.reply('\n'.join(fixed))
 

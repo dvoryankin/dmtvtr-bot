@@ -1,0 +1,8 @@
+{
+  "allowed_chat_ids": [
+    -1003911850060,
+    -1003681962162,
+    -1001165620202
+  ],
+  "note": "Explicit known group scope: 4RT, BRT, 123. No automatic expansion."
+}

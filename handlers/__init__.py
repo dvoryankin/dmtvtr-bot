@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from aiogram import Router
 
+from handlers.x_video import router as x_video_router
+from handlers.instagram import router as instagram_router
+from handlers.music import router as music_router
 from handlers.aquastar import router as aquastar_router
 from handlers.debug import router as debug_router
 from handlers.demotivator import router as demotivator_router
@@ -19,6 +22,9 @@ from handlers.minigame import router as minigame_router
 def all_routers() -> list[Router]:
     # Order matters for some generic handlers (e.g. emoji naming text input).
     return [
+        instagram_router,  # Raises SkipHandler after replying: preserve existing routes.
+        music_router,  # Continue existing routes after the music reply.
+        x_video_router,
         aquastar_router,
         quiz_router,
         minigame_router,
