@@ -15,12 +15,16 @@ MESSAGES = {
     'login_or_rate_limit': 'Provider reports login requirement or rate limit',
     'timeout': 'Network or operation timeout',
     'no_video': 'No supported video found',
+    'too_large': 'Media exceeds download size limit',
+    'invalid_file': 'Downloaded media failed validation',
     'unknown': 'Unclassified failure',
     'ok': 'Download validated',
 }
 
 def classify(text):
     text = str(text)[:16384]
+    if text in ('too_large', 'invalid_file'):
+        return {'code': text, 'message': MESSAGES[text], 'http_status': None}
     match = re.search(r'HTTP (?:Error |error |status )?(\d{3})\b', text)
     status = int(match.group(1)) if match else None
     code = 'unknown'

@@ -10,6 +10,7 @@ from instagram_download import canonical_url, validate_files, MAX_FILE, MAX_TOTA
 from instagram_network import install_network_guard
 from instagram_diagnostics import Diagnostic, classify
 from instagram_photos import download_photo
+from instagram_video_fallback import fitting_mp4
 from instagram_download import media_value
 import json
 
@@ -38,7 +39,7 @@ def check_disk(directory):
 
 def build_options(directory):
     return {
-        'format': 'best[ext=mp4][protocol=https]',
+        'format': fitting_mp4,
         'outtmpl': str(directory / '%(autonumber)02d.%(ext)s'),
         'restrictfilenames': True,
         'proxy': '', 'cachedir': False, 'cookiefile': None,

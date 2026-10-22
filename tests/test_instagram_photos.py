@@ -3,6 +3,25 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 class EmbedTests(unittest.TestCase):
+    def test_explicit_video_embed_cover_is_not_a_post_photo(self):
+        from instagram_photos import embedded_photo_urls
+        url = 'https://www.instagram.com/reel/DTpRqQEDIQ5/'
+        # Structural fixture of the exact public response; never a real CDN URL.
+        page = ('<div class="Embed" data-media-type="GraphVideo" '
+                'data-permalink="' + url + '"><a class="EmbeddedMedia" href="' + url + '">'
+                '<img class="EmbeddedMediaImage" src="https://x.cdninstagram.com/cover.jpg">'
+                '</a></div>')
+        self.assertEqual(embedded_photo_urls(page, expected_url=url), [])
+        from instagram_photos import download_photo
+        from instagram_download import DownloadError
+        from unittest.mock import patch
+        with TemporaryDirectory() as raw, patch('instagram_photos.fetch', return_value=page.encode()) as fetch:
+            directory = Path(raw)
+            with self.assertRaisesRegex(DownloadError, 'Instagram sent an empty media response'):
+                download_photo(url, directory)
+            self.assertEqual(fetch.call_count, 1)  # Never fetch the cover image.
+            self.assertEqual(list(directory.iterdir()), [])
+
     def test_only_post_media_not_avatar_or_recommendation(self):
         from instagram_photos import embedded_photo_urls
         html = '''<img src="https://x.cdninstagram.com/avatar.jpg">

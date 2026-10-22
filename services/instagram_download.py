@@ -161,7 +161,9 @@ def media_complete(item):
     coverage = getattr(item, 'coverage', None)
     # Legacy video runners/IDs retain their established delivery contract.
     # Photos need positive evidence: an embed or missing marker is not inventory.
-    return coverage == 'complete' or (media_type(item) == 'video' and coverage in (None, 'extracted_videos'))
+    return (coverage == 'complete'
+            or (media_type(item) == 'photo' and coverage == 'embed_single_image')
+            or (media_type(item) == 'video' and coverage in (None, 'extracted_videos')))
 
 
 def media_type(item):
@@ -265,7 +267,7 @@ def validate_files(directory, decode_photos=True):
         raise DownloadError('too_large')
     return result
 
-MAX_FILE = 45 * 1024 * 1024
+MAX_FILE = 50_000_000  # Telegram Bot API sendVideo: <=50 MB; other providers unchanged.
 MAX_TOTAL = 90 * 1024 * 1024
 MAX_ITEMS = 10
 

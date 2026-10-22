@@ -132,7 +132,8 @@ class WorkerTests(unittest.TestCase):
             directory = Path(raw)
             options = build_options(directory)
             self.assertEqual(options['proxy'], '')
-            self.assertEqual(options['format'], 'best[ext=mp4][protocol=https]')
+            from instagram_video_fallback import fitting_mp4
+            self.assertIs(options['format'], fitting_mp4)
             self.assertEqual(options['fixup'], 'never')
             self.assertFalse(options['cachedir'])
             (directory / '01.mp4.part').write_bytes(b'1234')
