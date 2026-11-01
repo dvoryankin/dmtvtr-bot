@@ -21,7 +21,13 @@ class DownloadError(Exception):
 
 
 class DownloadService:
-    def __init__(self, base_dir, allowed_chats, runner=None, clock=time.monotonic):
+    worker_timeout = 28
+    retry_attempts = 3
+
+    def __init__(self, base_dir, allowed_chats, runner=None, clock=time.monotonic,
+                 canonicalizer=None, validator=None):
+        self.canonicalizer = canonicalizer
+        self.validator = validator
         self.base_dir = Path(base_dir)
         self.allowed_chats = frozenset(allowed_chats)
         self.runner = runner or self.run_worker
@@ -35,7 +41,7 @@ class DownloadService:
         self.queue_timeout = 900
 
     async def handle(self, chat_id, url, send, message_id=None):
-        url = canonical_url(url)
+        url = (self.canonicalizer or canonical_url)(url)
         if chat_id not in self.allowed_chats or not url:
             raise DownloadError('scope')
         if (url in self.inflight or self.pending.get(chat_id, 0) >= 10
@@ -86,18 +92,18 @@ class DownloadService:
                 return
             self.cache.pop(url, None)
             deadline = self.clock() + 90
-            for attempt in range(3):
+            for attempt in range(self.retry_attempts):
                 remaining = deadline - self.clock()
                 if remaining <= 0:
                     raise DownloadError('timeout')
                 with tempfile.TemporaryDirectory(prefix='dmtvtr-instagram-') as raw:
                     directory = Path(raw)
                     try:
-                        await asyncio.wait_for(self.runner(url, directory), timeout=min(28, remaining))
-                        files = validate_files(directory)
+                        await asyncio.wait_for(self.runner(url, directory), timeout=min(self.worker_timeout, remaining))
+                        files = (self.validator or validate_files)(directory)
                     except (DownloadError, asyncio.TimeoutError) as exc:
                         code = 'timeout' if isinstance(exc, asyncio.TimeoutError) else str(exc)
-                        if code not in {'unavailable', 'timeout', 'empty_media', 'api_denied', 'login_or_rate_limit'} or attempt == 2:
+                        if code not in {'unavailable', 'timeout', 'empty_media', 'api_denied', 'login_or_rate_limit'} or attempt == self.retry_attempts - 1:
                             raise DownloadError(code) from None
                         logging.info('Instagram retry %s attempt=%s reason=%s', context.get(), attempt + 1, code)
                     else:

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from aiogram import Router
 
+from handlers.youtube_video import router as youtube_video_router
+from handlers.tiktok_video import router as tiktok_video_router
+from handlers.idiod_video import router as idiod_video_router
 from handlers.x_video import router as x_video_router
 from handlers.instagram import router as instagram_router
 from handlers.music import router as music_router
@@ -25,6 +28,9 @@ def all_routers() -> list[Router]:
         instagram_router,  # Raises SkipHandler after replying: preserve existing routes.
         music_router,  # Continue existing routes after the music reply.
         x_video_router,
+        idiod_video_router,  # Continue mixed-provider routes; independent sends only.
+        youtube_video_router,  # Continue other providers and the legacy checker.
+        tiktok_video_router,  # Native delivery before legacy URL mirrors.
         aquastar_router,
         quiz_router,
         minigame_router,

@@ -127,7 +127,8 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
   self.assertEqual(events,['send','send']);m.bot.delete_message.assert_awaited_once()
   args=m.bot.send_video.call_args.kwargs
   self.assertEqual((args['width'],args['height']),(1066,1668));self.assertEqual(args['caption'],'alice\nкоммент')
-  self.assertIsNone(args['parse_mode']);self.assertEqual(args['caption_entities'],[])
+  self.assertIsNone(args['parse_mode'])
+  self.assertEqual([(e.type,e.offset,e.length,e.url,e.user) for e in args['caption_entities']], [('text_link',0,5,'https://x.com/u/status/2',None)])
   self.assertNotIn('reply_parameters',args);self.assertEqual(args['message_thread_id'],27)
  async def test_fail_noop_partial_mixed_overflow_long_preserve(self):
   for mode,text in [('fail','https://x.com/u/status/1'),('noop','https://x.com/u/status/1'),('partial','https://x.com/u/status/1 https://x.com/u/status/2'),('ok','https://x.com/u/status/1 https://example.com/a'),('ok','https://x.com/u/status/1 https://instagram.com/p/a/'),('ok',' '.join('https://x.com/u/status/%s'%i for i in range(4))),('ok','😀'*1100+' https://x.com/u/status/1')]:
@@ -151,7 +152,7 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
    if count==2:m.bot.delete_message.assert_awaited_once()
    else:m.bot.delete_message.assert_not_awaited()
  async def test_hidden_fourth_url_keeps_source(self):
-  m=self.message('labels',entities=[NS(type='text_link',url='https://x.com/u/status/%s'%i) for i in range(4)])
+  m=self.message('labels',entities=[NS(type='text_link',offset=i,length=1,url='https://x.com/u/status/%s'%i) for i in range(4)])
   await self.run_handler(m);self.assertEqual(m.bot.send_video.await_count,3);m.bot.delete_message.assert_not_awaited()
  async def test_delete_failure_does_not_resend(self):
   m=self.message();m.bot.delete_message.side_effect=RuntimeError('private secret')
@@ -159,9 +160,9 @@ class Delivery(unittest.IsolatedAsyncioTestCase):
   m.bot.send_video.assert_awaited_once();m.bot.delete_message.assert_awaited_once()
   self.assertNotIn('private secret',' '.join(logs.output))
  async def test_hidden_links_supported_unhandled_entity_preserves(self):
-  m=self.message('смотри',entities=[NS(type='text_link',url='https://twitter.com/u/status/1?s=1')])
+  m=self.message('смотри',entities=[NS(type='text_link',offset=0,length=6,url='https://twitter.com/u/status/1?s=1')])
   await self.run_handler(m);m.bot.delete_message.assert_awaited_once()
-  m=self.message(entities=[NS(type='text_link',url='https://example.com/a')])
+  m=self.message(entities=[NS(type='text_link',offset=0,length=1,url='https://example.com/a')])
   await self.run_handler(m);m.bot.delete_message.assert_not_awaited()
  async def test_mixed_instagram_x_both_send_and_source_remains(self):
   from handlers import instagram as ig

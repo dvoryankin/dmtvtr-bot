@@ -2,7 +2,7 @@
 import json
 import logging
 import re
-import unicodedata
+from services.repost_author import repost_author
 from pathlib import Path
 from aiogram import Router
 from aiogram.filters import Filter
@@ -28,9 +28,18 @@ def current(message):
  raw=[m.group().rstrip('.,!?:;)]}\"\'') for m in URL_RE.finditer(message.text or '')]
  raw.extend(e.url for e in (message.entities or []) if e.type=='text_link' and e.url)
  # Telegram offsets/lengths count UTF-16 code units, not Python characters.
- encoded=(message.text or '').encode('utf-16-le')
- raw.extend(encoded[e.offset*2:(e.offset+e.length)*2].decode('utf-16-le').rstrip('.,!?:;)]}\"\'')
-            for e in (message.entities or []) if e.type=='url')
+ try:encoded=(message.text or '').encode('utf-16-le')
+ except UnicodeError:return raw+[''],[]
+ for e in (message.entities or []):
+  if e.type not in ('url','text_link'):continue
+  # Unknown inventory must veto source deletion, not discard valid plain URLs.
+  offset,length=getattr(e,'offset',None),getattr(e,'length',None)
+  if (type(offset) is not int or type(length) is not int or offset<0
+      or length<=0 or (offset+length)*2>len(encoded)):
+   raw.append('');continue
+  try:visible=encoded[offset*2:(offset+length)*2].decode('utf-16-le')
+  except UnicodeError:raw.append('');continue
+  if e.type=='url':raw.append(visible.rstrip(".,!?:;)]}\"'"))
  urls=list(dict.fromkeys(canonical_url(u) for u in raw if canonical_url(u)))
  return raw,urls
 
@@ -48,9 +57,7 @@ class XFilter(Filter):
 @router.message(XFilter())
 async def x_video(message,x_urls):
  raw,all_urls=current(message)
- user=message.from_user
- author=(getattr(message.sender_chat,'title','') or getattr(user,'username','') or ' '.join(filter(None,(getattr(user,'first_name',''),getattr(user,'last_name','')))))
- author=''.join(' ' if unicodedata.category(c).startswith('C') else c for c in author).replace('@','')[:80].strip()
+ author,_=repost_author(message,DELIVERY['author_caption'])
  def remove(match):
   value=match.group();clean=value.rstrip('.,!?:;)]}\"\'')
   return value[len(clean):] if canonical_url(clean) else value
@@ -62,11 +69,12 @@ async def x_video(message,x_urls):
  if DELIVERY['reply_mode']:common['reply_parameters']=ReplyParameters(message_id=message.message_id)
  outcomes=[];handled=set();attempted=set()
  for url in x_urls:
+  _,author_entities=repost_author(message,DELIVERY['author_caption'],source_url=canonical_url(url))
   confirmed=False
   async def send(items):
    nonlocal confirmed
    if not 1<=len(items)<=10:raise ValueError('invalid_file')
-   kwargs=dict(caption=caption,parse_mode=None,caption_entities=[],supports_streaming=True)
+   kwargs=dict(caption=caption,parse_mode=None,caption_entities=author_entities,supports_streaming=True)
    def value(item):return FSInputFile(item.value) if isinstance(item.value,Path) else item.value
    # Once upload starts, a timeout may mean Telegram accepted the media.
    # Suppress mirror fallback without counting this as delivery confirmation.
@@ -75,7 +83,7 @@ async def x_video(message,x_urls):
     item=items[0]
     sent=[await message.bot.send_video(video=value(item),width=item.width,height=item.height,**common,**kwargs)]
    else:
-    sent=await message.bot.send_media_group(**common,media=[InputMediaVideo(media=value(item),width=item.width,height=item.height,caption=caption if i==0 else None,parse_mode=None,caption_entities=[],supports_streaming=True) for i,item in enumerate(items)])
+    sent=await message.bot.send_media_group(**common,media=[InputMediaVideo(media=value(item),width=item.width,height=item.height,caption=caption if i==0 else None,parse_mode=None,caption_entities=author_entities if i==0 else [],supports_streaming=True) for i,item in enumerate(items)])
    confirmed=len(sent)==len(items) and all(getattr(r,'message_id',None) and getattr(getattr(r,'video',None),'file_id',None) for r in sent)
    return confirmed
   try:

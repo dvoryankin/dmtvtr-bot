@@ -43,8 +43,16 @@ def _fix_urls(text: str) -> list[str]:
 async def fix_links_in_text(message: Message) -> None:
     from handlers.x_video import handled_urls
     from services.x_video import canonical_url
+    from handlers.tiktok_video import handled_urls as tiktok_handled_urls
+    from services.tiktok_video import canonical_url as tiktok_canonical_url
     handled = handled_urls(message)
-    text = _URL_RE.sub(lambda m: '' if canonical_url(m.group().rstrip('.,!?:;)]}\"\'')) in handled else m.group(), message.text)
+    tiktok_handled = tiktok_handled_urls(message)
+    def retain_unhandled(match):
+        clean = match.group().rstrip('.,!?:;)]}\"\'')
+        if canonical_url(clean) in handled or tiktok_canonical_url(clean) in tiktok_handled:
+            return ''
+        return match.group()
+    text = _URL_RE.sub(retain_unhandled, message.text)
     fixed = _fix_urls(text)
     if fixed:
         await message.reply('\n'.join(fixed))

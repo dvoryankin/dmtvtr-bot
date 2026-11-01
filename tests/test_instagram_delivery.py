@@ -64,7 +64,9 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         await self.run_handler(m,handle)
         args=m.bot.send_media_group.call_args.kwargs;media=args['media']
         self.assertEqual(media[0].caption,'alice\nкоммент');self.assertIsNone(media[1].caption)
-        for item in media: self.assertIsNone(item.parse_mode);self.assertEqual(item.caption_entities,[])
+        for index,item in enumerate(media):
+            self.assertIsNone(item.parse_mode)
+            self.assertEqual([(e.type,e.offset,e.length,e.url,e.user) for e in item.caption_entities], [('text_link',0,5,'https://www.instagram.com/p/a/',None)] if index==0 else [])
         self.assertIsNone(args['reply_parameters']);self.assertEqual(args['message_thread_id'],27)
         m.bot.delete_message.assert_awaited_once()
 
@@ -135,5 +137,6 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         args=m.bot.send_video.call_args.kwargs
         self.assertEqual(args['chat_id'],m.chat.id);self.assertEqual(args['message_thread_id'],27)
         self.assertIsNone(args['reply_parameters']);self.assertNotIn('reply_to_message_id',args)
-        self.assertEqual(args['caption'],'alice');self.assertIsNone(args['parse_mode']);self.assertEqual(args['caption_entities'],[])
+        self.assertEqual(args['caption'],'alice');self.assertIsNone(args['parse_mode'])
+        self.assertEqual([(e.type,e.offset,e.length,e.url,e.user) for e in args['caption_entities']], [('text_link',0,5,'https://www.instagram.com/p/a/',None)])
         self.assertEqual((args['width'],args['height']),(720,1280))

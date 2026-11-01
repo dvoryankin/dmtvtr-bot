@@ -6,7 +6,8 @@ import json
 import logging
 import os
 import time
-import unicodedata
+from functools import partial
+from services.repost_author import repost_author, url_entities_covered
 import re
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from services.instagram_download import (DownloadError, DownloadService, canonic
                                          extract_urls, media_type, media_value, media_complete, MAX_ITEMS, MediaItem)
 from services.instagram_video_metadata import probe_video_dimensions, valid_dimensions
 from services.x_video import canonical_url as canonical_x_url
+from services.idiod_video import canonical_url as canonical_idiod_url
 
 BASE = Path(__file__).resolve().parents[1]
 # Frozen deployment snapshot, not a live DB query: joining a new group does NOT
@@ -57,7 +59,7 @@ class InstagramFilter(Filter):
             return False
         urls = extract_urls(text)
         for entity in (message.entities or message.caption_entities or []):
-            if entity.type == 'text_link' and entity.url:
+            if getattr(entity, 'type', None) == 'text_link' and isinstance(getattr(entity, 'url', None), str) and entity.url:
                 url = canonical_url(entity.url)
                 if url and url not in urls:
                     urls.append(url)
@@ -68,12 +70,7 @@ class InstagramFilter(Filter):
 @router.message(InstagramFilter())
 async def instagram_video(message: Message, instagram_url=None, instagram_urls=None):
     started = time.monotonic()
-    user = message.from_user
-    author = (getattr(getattr(message, 'sender_chat', None), 'title', '') or
-              getattr(user, 'username', None) or
-              ' '.join(x for x in (getattr(user, 'first_name', None), getattr(user, 'last_name', None)) if x) or
-              getattr(getattr(message, 'sender_chat', None), 'title', '') or '')
-    author = ''.join(' ' if unicodedata.category(c).startswith('C') else c for c in author).replace('@', '')[:80].strip()
+    author, _ = repost_author(message, DELIVERY['author_caption'])
     text = message.text or ''
     def remove_instagram(match):
         raw = match.group()
@@ -83,7 +80,7 @@ async def instagram_video(message: Message, instagram_url=None, instagram_urls=N
     current_urls = set(extract_urls(text))
     preserve_link_entities = False
     for entity in (getattr(message, 'entities', None) or []):
-        if entity.type == 'text_link' and entity.url:
+        if getattr(entity, 'type', None) == 'text_link' and isinstance(getattr(entity, 'url', None), str) and entity.url:
             linked = canonical_url(entity.url)
             if linked:
                 current_urls.add(linked)
@@ -98,8 +95,9 @@ async def instagram_video(message: Message, instagram_url=None, instagram_urls=N
     common = dict(chat_id=message.chat.id, message_thread_id=getattr(message, 'message_thread_id', None),
                   reply_parameters=ReplyParameters(message_id=message.message_id) if DELIVERY['reply_mode'] else None)
     confirmed = 0
-    async def send(items):
+    async def send(items, source_url):
         nonlocal confirmed
+        _, author_entities = repost_author(message, DELIVERY['author_caption'], source_url=source_url)
         kinds = [media_type(x) for x in items]
         if not 1 <= len(items) <= MAX_ITEMS or any(x not in {'photo', 'video'} for x in kinds):
             raise DownloadError('invalid_file')
@@ -119,13 +117,13 @@ async def instagram_video(message: Message, instagram_url=None, instagram_urls=N
         media = [FSInputFile(x) if isinstance(x, Path) else x for x in values]
         if len(media) == 1:
             if kinds[0] == 'photo':
-                sent = [await message.bot.send_photo(photo=media[0], caption=caption, parse_mode=None, caption_entities=[], **common)]
+                sent = [await message.bot.send_photo(photo=media[0], caption=caption, parse_mode=None, caption_entities=author_entities, **common)]
             else:
-                sent = [await message.bot.send_video(video=media[0], supports_streaming=True, caption=caption, parse_mode=None, caption_entities=[], **common, **dimensions[0])]
+                sent = [await message.bot.send_video(video=media[0], supports_streaming=True, caption=caption, parse_mode=None, caption_entities=author_entities, **common, **dimensions[0])]
         else:
             sent = await message.bot.send_media_group(**common, media=[
-                InputMediaPhoto(media=x, caption=caption if index == 0 else None, parse_mode=None, caption_entities=[]) if kind == 'photo'
-                else InputMediaVideo(media=x, supports_streaming=True, caption=caption if index == 0 else None, parse_mode=None, caption_entities=[], **dims)
+                InputMediaPhoto(media=x, caption=caption if index == 0 else None, parse_mode=None, caption_entities=author_entities if index == 0 else []) if kind == 'photo'
+                else InputMediaVideo(media=x, supports_streaming=True, caption=caption if index == 0 else None, parse_mode=None, caption_entities=author_entities if index == 0 else [], **dims)
                 for index, (kind, x, dims) in enumerate(zip(kinds, media, dimensions))])
         ids = []
         for kind, result in zip(kinds, sent):
@@ -140,7 +138,7 @@ async def instagram_video(message: Message, instagram_url=None, instagram_urls=N
     async def process(url):
         before = confirmed
         try:
-            await service.handle(message.chat.id, url, send, message_id=message.message_id)
+            await service.handle(message.chat.id, url, partial(send, source_url=canonical_url(url)), message_id=message.message_id)
             logging.info('Instagram delivery success shortcode=%s message_id=%s chat=%s elapsed=%.3f',
                          canonical_url(url).rstrip('/').rsplit('/', 1)[-1],
                          message.message_id, message.chat.id, time.monotonic() - started)
@@ -165,9 +163,13 @@ async def instagram_video(message: Message, instagram_url=None, instagram_urls=N
     # A separate provider cannot confirm our deliveries (or vice versa). Keep
     # mixed-source originals while allowing both handlers to send their media.
     contains_x = any(canonical_x_url(value.rstrip(".,!?:;)]}\"'")) for value in re.findall(r'https?://[^\s<>]+', text))
-    contains_x = contains_x or any(canonical_x_url(e.url) for e in (message.entities or []) if e.type == 'text_link' and e.url)
+    contains_x = contains_x or any(canonical_x_url(e.url) for e in (message.entities or []) if getattr(e, 'type', None) == 'text_link' and isinstance(getattr(e, 'url', None), str) and e.url)
+    contains_idiod = any(canonical_idiod_url(value.rstrip(".,!?:;)]}\"'")) for value in re.findall(r'https?://[^\s<>]+', text))
     if (DELIVERY['delete_source'] and not DELIVERY['reply_mode'] and complete_caption
-            and not contains_x and not preserve_link_entities and urls and len(urls) <= 3
+            and not contains_x and not contains_idiod and not preserve_link_entities and urls and len(urls) <= 3
+            and all(canonical_url(value.rstrip(".,!?:;)]}\"'")) for value in re.findall(r'https?://[^\s<>]+', text, re.IGNORECASE))
+            and url_entities_covered(text, message.entities or [], canonical_url,
+                                     {canonical_url(url) for url in urls})
             and current_urls.issubset({canonical_url(url) for url in urls})
             and all(outcomes) and message.text is not None
             and not any(getattr(message, field, None) for field in ('video', 'animation', 'document', 'photo', 'audio', 'voice', 'video_note', 'sticker'))
