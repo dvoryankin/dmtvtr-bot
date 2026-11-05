@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import os
 import json
 import asyncio
 from collections import OrderedDict, namedtuple
@@ -16,8 +17,22 @@ except ImportError:
 from urllib.parse import urlsplit
 
 
+def open_session():
+    """Load the optional Instagram dependency only when auth is eligible."""
+    try:
+        from .instagram_session import open_session as opener
+    except ImportError:
+        from instagram_session import open_session as opener
+    return opener()
+
+
 class DownloadError(Exception):
     """A bounded, expected failure; never surface raw downloader errors to chat."""
+
+    def __init__(self, code, auth_eligible=None):
+        super().__init__(code)
+        # Explicit injected login runners retain their established contract.
+        self.auth_eligible = code == 'login_required' if auth_eligible is None else auth_eligible
 
 
 class DownloadService:
@@ -81,6 +96,7 @@ class DownloadService:
     async def _execute(self, chat_id, url, send, message_id):
         now = self.clock()
         token = context.set('message_id=%s chat=%s' % (message_id, chat_id))
+        auth_fd = None
         try:
             cached = self.cache.get(url)
             if cached and now - cached[0] < 3600:
@@ -92,6 +108,8 @@ class DownloadService:
                 return
             self.cache.pop(url, None)
             deadline = self.clock() + 90
+            session_checked = False
+            auth_history_clean = True
             for attempt in range(self.retry_attempts):
                 remaining = deadline - self.clock()
                 if remaining <= 0:
@@ -99,11 +117,29 @@ class DownloadService:
                 with tempfile.TemporaryDirectory(prefix='dmtvtr-instagram-') as raw:
                     directory = Path(raw)
                     try:
-                        await asyncio.wait_for(self.runner(url, directory), timeout=min(self.worker_timeout, remaining))
+                        if auth_fd is None:
+                            operation = self.runner(url, directory)
+                        else:
+                            operation = self.run_authenticated_worker(url, directory, auth_fd)
+                        await asyncio.wait_for(operation, timeout=min(self.worker_timeout, remaining))
                         files = (self.validator or validate_files)(directory)
+                        if auth_fd is not None and any(getattr(f, 'coverage', None) != 'complete' for f in files):
+                            raise DownloadError('inventory_incomplete')
                     except (DownloadError, asyncio.TimeoutError) as exc:
                         code = 'timeout' if isinstance(exc, asyncio.TimeoutError) else str(exc)
-                        if code not in {'unavailable', 'timeout', 'empty_media', 'api_denied', 'login_or_rate_limit'} or attempt == self.retry_attempts - 1:
+                        if auth_fd is not None:
+                            raise DownloadError(code) from None
+                        auth_history_clean = auth_history_clean and getattr(exc, 'auth_eligible', False)
+                        if (auth_history_clean and self.canonicalizer is None
+                                and not session_checked and attempt < self.retry_attempts - 1):
+                            session_checked = True
+                            try:
+                                auth_fd = open_session()
+                            except ValueError:
+                                raise DownloadError('session_invalid') from None
+                            if auth_fd is not None:
+                                continue  # exits/cleans public directory before auth
+                        if code not in {'unavailable', 'timeout', 'empty_media', 'api_denied', 'login_or_rate_limit'} or attempt >= self.retry_attempts - 1:
                             raise DownloadError(code) from None
                         logging.info('Instagram retry %s attempt=%s reason=%s', context.get(), attempt + 1, code)
                     else:
@@ -127,14 +163,22 @@ class DownloadService:
                     raise DownloadError('timeout')
                 await asyncio.sleep(min(attempt + 1, remaining))
         finally:
+            if auth_fd is not None:
+                os.close(auth_fd)
             context.reset(token)
 
-    async def run_worker(self, url, directory):
+    async def run_authenticated_worker(self, url, directory, fd):
+        return await self.run_worker(url, directory, auth_fd=fd)
+
+    async def run_worker(self, url, directory, auth_fd=None):
         started = time.monotonic()
         python = self.base_dir / '.instagram-venv/bin/python'
         worker = self.base_dir / 'services/instagram_worker.py'
+        auth_args = () if auth_fd is None else ('--auth-fd', str(auth_fd))
+        fd_options = {} if auth_fd is None else {'pass_fds': (auth_fd,)}
         process = await asyncio.create_subprocess_exec(
-            str(python), '-I', str(worker), url, str(directory),
+            str(python), '-I', str(worker), url, str(directory), *auth_args,
+            **fd_options,
             cwd=str(directory),
             env={'PATH': '/usr/bin:/bin', 'HOME': str(directory),
                  'TMPDIR': str(directory), 'LANG': 'C.UTF-8'},
@@ -148,7 +192,7 @@ class DownloadService:
                     reason = 'unavailable'
                 elif reason in {'unknown', 'csrf_missing'}:
                     reason = 'unavailable'
-                raise DownloadError(reason)
+                raise DownloadError(reason, auth_eligible=diagnostic.get('auth_eligible', False))
         finally:
             if process.returncode is None:
                 process.kill()

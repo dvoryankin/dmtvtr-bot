@@ -12,6 +12,7 @@ from instagram_diagnostics import Diagnostic, classify
 from instagram_photos import download_photo
 from instagram_video_fallback import fitting_mp4
 from instagram_download import media_value
+from instagram_authenticated import extract_authenticated
 import json
 
 
@@ -71,6 +72,10 @@ def main():
     from yt_dlp import YoutubeDL
     from yt_dlp.extractor.instagram import InstagramIE
     from yt_dlp.networking._urllib import UrllibRH
+    auth = len(sys.argv) == 5 and sys.argv[3] == '--auth-fd' and sys.argv[4].isdigit()
+    if len(sys.argv) != 3 and not auth:
+        return 2
+    jar = None
 
     class GuardedDL(YoutubeDL):
         def process_info(self, info_dict):
@@ -79,15 +84,30 @@ def main():
 
         def build_request_director(self, handlers, preferences=None):
             # Do not permit curl/requests, whose resolution bypasses socket guards.
+            if auth:
+                from instagram_network import authenticated_handler
+                return super().build_request_director([authenticated_handler(jar)], preferences)
             return super().build_request_director([UrllibRH], preferences)
 
+        def save_cookies(self):
+            if not auth:
+                return super().save_cookies()
+
+
     try:
+        if auth:
+            from instagram_session import read_session
+            jar = read_session(int(sys.argv[4]))
         options = build_options(directory)
         options.update(logger=diagnostic, no_warnings=False)
         diagnostic.set_phase('metadata')
         with GuardedDL(options, auto_init=False) as dl:
-            dl.add_info_extractor(InstagramIE())
-            extract_media(dl, url, directory)
+            if auth:
+                dl.cookiejar = jar
+                extract_authenticated(dl, url, directory)
+            else:
+                dl.add_info_extractor(InstagramIE())
+                extract_media(dl, url, directory)
         diagnostic.set_phase('validation')
         check_disk(directory)
         files = validate_files(directory, decode_photos=False)
