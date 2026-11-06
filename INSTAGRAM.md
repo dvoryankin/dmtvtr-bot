@@ -118,3 +118,29 @@ Backup with original file modes and baseline git diff/status:
 `.instagram-queue-backup-20261005T153515Z/`. Feature-only patch is stored there.
 No music code, downloader worker, network guard, credentials or model config was
 changed. Parent operator owns restart/activation; this change has not been activated.
+
+
+## Replacement Aeza recovery, 2026-11-06
+
+The bot service alone is insufficient: `services/instagram_download.py` and the
+YouTube wrapper launch `.instagram-venv/bin/python`. Restore that isolated Python
+3.12 environment and the exact `requirements-instagram.txt` pin before accepting
+traffic. A missing environment raises FileNotFoundError before any provider call.
+On the replacement host the main runtime is already Python3.12; use:
+
+```sh
+cd /root/bots
+/usr/local/bin/uv venv --python venv/bin/python .instagram-venv
+/usr/local/bin/uv pip install --python .instagram-venv/bin/python -r requirements-instagram.txt
+.instagram-venv/bin/python -I -c 'import yt_dlp; print(yt_dlp.version.__version__)'
+```
+
+Workers are spawned per operation, so restoring the environment requires no bot
+restart. A live verification of the reported reel reached Instagram but returned
+`rate_limited`; this is separate from the corrected missing-runtime error. Do not
+retry aggressively or report Telegram delivery as verified. The saved authenticated
+Instagram session from the old host was not recovered.
+
+The handler dimension unit test now mocks its metadata boundary, matching the
+other handler tests, instead of depending on an untracked video in the former
+production server directory. Existing geometry/ffprobe lifecycle tests remain.

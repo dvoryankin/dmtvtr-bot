@@ -17,8 +17,8 @@ class DimensionsTests(unittest.IsolatedAsyncioTestCase):
         from handlers.instagram import instagram_video, service
         msg = Message.model_validate({'message_id':11,'date':1700000000,'chat':{'id':-1003911850060,'type':'supergroup'},'text':'https://www.instagram.com/reel/abc/'})
         async def handle(chat,url,send,message_id=None):
-            await send([Path('/root/bots/instagram-verification/DeHGTtux7SL.mp4')])
-        with patch.object(service,'handle',side_effect=handle), patch.object(self.bot,'send_video',new_callable=AsyncMock,return_value=SimpleNamespace(video=SimpleNamespace(file_id='id'))) as reply:
+            await send([Path('/tmp/instagram-video-unit-test.mp4')])
+        with patch.object(service,'handle',side_effect=handle), patch('handlers.instagram.probe_video_dimensions',new_callable=AsyncMock,return_value=(720,1280)), patch.object(self.bot,'send_video',new_callable=AsyncMock,return_value=SimpleNamespace(video=SimpleNamespace(file_id='id'))) as reply:
             with self.assertRaises(SkipHandler): await instagram_video(msg,'https://www.instagram.com/reel/abc/')
             self.assertEqual((reply.call_args.kwargs.get('width'),reply.call_args.kwargs.get('height')),(720,1280))
 
